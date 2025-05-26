@@ -6,6 +6,10 @@ export const userTypes = `#graphql
     role: String!
     saldo: Float!
     createdAt: String!
+    googleId: String
+    avatar: String
+    isEmailVerified: Boolean
+    lastLogin: String
   }
 
   type AuthPayload {
@@ -35,5 +39,6 @@ export const userTypes = `#graphql
     login(input: LoginInput!): AuthPayload!
     updateProfile(name: String!): User!
     changePassword(oldPassword: String!, newPassword: String!): Boolean!
+    googleAuth(token: String!): AuthPayload!
   }
 `; 

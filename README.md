@@ -4,12 +4,62 @@ Backend server untuk aplikasi ParkirCepat menggunakan GraphQL, MongoDB, dan WebS
 
 ## Fitur
 
-- 🚀 GraphQL API dengan Apollo Server
-- 🔌 Real-time communication dengan WebSocket subscriptions
-- 🗄️ MongoDB dengan native driver
-- 🔐 JWT authentication
-- 💳 Integrasi Midtrans payment gateway
-- 📍 Geospatial search untuk lokasi parkir
+### 🔐 Autentikasi & Otorisasi
+- JWT-based authentication
+- Google OAuth login
+- Role-based access control (user, landowner, admin)
+- Email verification
+- Password reset
+- Session management
+
+### 👤 User Management
+- Registrasi dengan email/password
+- Login dengan Google
+- Update profil (nama, foto, dll)
+- Manajemen saldo (top-up, riwayat)
+- Rating dan review untuk tempat parkir
+
+### 🅿️ Manajemen Parkir
+- CRUD tempat parkir oleh landowner
+- Upload foto tempat parkir
+- Set tarif dan slot parkir
+- Geospatial search (radius & lokasi)
+- Filter berdasarkan:
+  - Jenis kendaraan
+  - Harga
+  - Rating
+  - Jarak
+  - Ketersediaan slot
+
+### 📱 Booking System
+- Booking langsung atau terjadwal
+- QR Code untuk entry/exit
+- Status tracking (pending, confirmed, completed, cancelled)
+- Extend durasi parkir
+- Riwayat booking
+- Notifikasi real-time
+
+### 💳 Payment System
+- Integrasi Midtrans
+- Multiple payment methods:
+  - QRIS
+  - Virtual Account
+  - E-wallet
+  - Credit Card
+- Saldo system:
+  - Top-up saldo
+  - Pay with saldo
+  - Riwayat transaksi
+- Invoice generation
+
+### 💬 Chat & Notifikasi
+- Real-time chat antara user & landowner
+- Notifikasi untuk:
+  - Status booking
+  - Payment status
+  - Chat messages
+  - System updates
+- Email notifications
 
 ## Teknologi
 
@@ -19,6 +69,7 @@ Backend server untuk aplikasi ParkirCepat menggunakan GraphQL, MongoDB, dan WebS
 - **Express.js** - Web framework
 - **WebSocket** - Real-time communication
 - **Midtrans** - Payment gateway
+- **Google OAuth** - Social login
 - **bcryptjs** - Password hashing
 - **jsonwebtoken** - JWT authentication
 
@@ -112,17 +163,22 @@ server/
 
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | 4000 |
-| `MONGODB_URI` | MongoDB connection string | - |
-| `JWT_SECRET` | JWT secret key | - |
-| `JWT_EXPIRES_IN` | JWT expiration time | 7d |
-| `MIDTRANS_SERVER_KEY` | Midtrans server key | - |
-| `MIDTRANS_CLIENT_KEY` | Midtrans client key | - |
-| `MIDTRANS_IS_PRODUCTION` | Production mode | false |
-| `CORS_ORIGIN` | CORS origin | http://localhost:3000 |
-| `WS_PATH` | WebSocket path | /graphql |
+| Variable | Description | Required | Default |
+|----------|-------------|----------|---------|
+| `PORT` | Server port | No | 4000 |
+| `MONGODB_URI` | MongoDB connection string | Yes | - |
+| `JWT_SECRET` | JWT secret key | Yes | - |
+| `JWT_EXPIRES_IN` | JWT expiration time | No | 7d |
+| `MIDTRANS_SERVER_KEY` | Midtrans server key | Yes | - |
+| `MIDTRANS_CLIENT_KEY` | Midtrans client key | Yes | - |
+| `MIDTRANS_IS_PRODUCTION` | Production mode | No | false |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID | Yes | - |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Yes | - |
+| `GOOGLE_CALLBACK_URL` | Google OAuth callback URL | Yes | - |
+| `CORS_ORIGIN` | CORS origin | No | http://localhost:3000 |
+| `WS_PATH` | WebSocket path | No | /graphql |
+| `CLIENT_URL` | Frontend URL | Yes | - |
+| `SESSION_SECRET` | Session secret key | Yes | - |
 
 ## Development
 
@@ -162,3 +218,351 @@ MongoDB collections:
 3. Commit your changes
 4. Push to the branch
 5. Open a pull request
+
+## GraphQL API Reference
+
+### Queries
+
+#### User Queries
+```graphql
+# Get current user info
+query Me {
+  me {
+    _id
+    email
+    name
+    role
+    saldo
+    avatar
+    isEmailVerified
+    createdAt
+  }
+}
+
+# Get user by ID
+query GetUser($userId: ID!) {
+  getUserById(userId: $userId) {
+    _id
+    name
+    email
+    role
+  }
+}
+```
+
+#### ParkingLot Queries
+```graphql
+# Search nearby parking lots
+query SearchParkingLots(
+  $lat: Float!
+  $lng: Float!
+  $radius: Float
+  $vehicleType: String
+  $minPrice: Float
+  $maxPrice: Float
+) {
+  searchParkingLots(
+    lat: $lat
+    lng: $lng
+    radius: $radius
+    vehicleType: $vehicleType
+    minPrice: $minPrice
+    maxPrice: $maxPrice
+  ) {
+    _id
+    name
+    address
+    photos
+    availableSlots
+    tariff
+    rating
+    distance
+  }
+}
+
+# Get parking lot details
+query GetParkingLot($id: ID!) {
+  getParkingLot(id: $id) {
+    _id
+    name
+    address
+    description
+    photos
+    location {
+      coordinates
+    }
+    availableSlots
+    totalSlots
+    vehicleTypes
+    tariff
+    operationalHours {
+      open
+      close
+    }
+    facilities
+    rating
+    reviews {
+      user {
+        name
+        avatar
+      }
+      rating
+      comment
+      createdAt
+    }
+  }
+}
+```
+
+#### Booking Queries
+```graphql
+# Get active bookings
+query GetMyActiveBookings {
+  getMyActiveBookings {
+    _id
+    parkingLot {
+      name
+      address
+    }
+    vehicleType
+    startTime
+    duration
+    cost
+    status
+    qrCode
+    entryQR
+    exitQR
+  }
+}
+
+# Get booking history
+query GetMyBookingHistory {
+  getMyBookingHistory {
+    _id
+    parkingLot {
+      name
+    }
+    startTime
+    duration
+    cost
+    status
+    payment {
+      status
+      paymentMethod
+    }
+  }
+}
+```
+
+### Mutations
+
+#### Auth Mutations
+```graphql
+# Register new user
+mutation Register($input: RegisterInput!) {
+  register(input: $input) {
+    token
+    user {
+      _id
+      email
+      name
+      role
+    }
+  }
+}
+
+# Login
+mutation Login($input: LoginInput!) {
+  login(input: $input) {
+    token
+    user {
+      _id
+      email
+      name
+      role
+      saldo
+    }
+  }
+}
+
+# Google Auth
+mutation GoogleAuth($token: String!) {
+  googleAuth(token: $token) {
+    token
+    user {
+      _id
+      name
+      email
+      avatar
+    }
+  }
+}
+```
+
+#### Booking Mutations
+```graphql
+# Create booking
+mutation CreateBooking($input: CreateBookingInput!) {
+  createBooking(input: $input) {
+    _id
+    parkingLot {
+      name
+    }
+    startTime
+    duration
+    cost
+    status
+  }
+}
+
+# Generate QR Code
+mutation GenerateBookingQR($bookingId: ID!) {
+  generateBookingQR(bookingId: $bookingId) {
+    _id
+    qrCode
+    entryQR
+    exitQR
+  }
+}
+```
+
+#### Payment Mutations
+```graphql
+# Create payment
+mutation CreatePayment($input: CreatePaymentInput!) {
+  createPayment(input: $input) {
+    _id
+    amount
+    paymentMethod
+    status
+    paymentUrl
+  }
+}
+
+# Top up saldo
+mutation TopUpSaldo($input: TopUpInput!) {
+  topUpSaldo(input: $input) {
+    _id
+    amount
+    paymentUrl
+  }
+}
+```
+
+### Subscriptions
+
+```graphql
+# Booking status updates
+subscription BookingStatusChanged($parkingLotId: ID!) {
+  bookingStatusChanged(parkingLotId: $parkingLotId) {
+    _id
+    status
+    updatedAt
+  }
+}
+
+# New chat messages
+subscription ChatReceived($bookingId: ID!) {
+  chatReceived(bookingId: $bookingId) {
+    _id
+    message
+    sender {
+      name
+      avatar
+    }
+    createdAt
+  }
+}
+
+# Real-time notifications
+subscription NotificationReceived {
+  notificationReceived {
+    _id
+    type
+    title
+    message
+    data
+    createdAt
+  }
+}
+```
+
+## Error Handling
+
+Server menggunakan format error yang konsisten:
+
+```typescript
+interface ErrorResponse {
+  message: string;    // Pesan error dalam Bahasa Indonesia
+  code?: string;      // Error code untuk frontend
+  data?: any;         // Data tambahan jika ada
+}
+```
+
+Common error codes:
+- `UNAUTHENTICATED` - Token tidak valid/expired
+- `FORBIDDEN` - Tidak punya akses
+- `NOT_FOUND` - Data tidak ditemukan
+- `BAD_REQUEST` - Input tidak valid
+- `PAYMENT_FAILED` - Gagal melakukan pembayaran
+
+## WebSocket Events
+
+| Event | Description | Payload |
+|-------|-------------|---------|
+| `BOOKING_CREATED` | Booking baru dibuat | Booking object |
+| `BOOKING_UPDATED` | Status booking berubah | Booking object |
+| `PAYMENT_UPDATED` | Status pembayaran berubah | Payment object |
+| `CHAT_SENT` | Pesan chat baru | Chat object |
+| `NOTIFICATION_NEW` | Notifikasi baru | Notification object |
+
+## Testing API
+
+1. Buka Apollo Studio di `http://localhost:4000/graphql`
+2. Set header Authorization jika perlu:
+```json
+{
+  "Authorization": "Bearer your_jwt_token"
+}
+```
+
+## Best Practices Frontend
+
+1. **State Management**:
+   - Simpan token di secure storage
+   - Manage user session
+   - Handle loading states
+   - Cache GraphQL queries
+
+2. **Error Handling**:
+   - Display error messages
+   - Retry mechanisms
+   - Fallback UI
+
+3. **Real-time Updates**:
+   - Subscribe ke events yang relevan
+   - Update UI secara real-time
+   - Handle WebSocket reconnection
+
+4. **Performance**:
+   - Implement pagination
+   - Cache responses
+   - Optimize queries
+
+5. **Security**:
+   - Secure token storage
+   - Input validation
+   - XSS prevention
+
+## Deployment
+
+Server production dapat diakses di:
+- GraphQL: `https://api.parkircepat.com/graphql`
+- WebSocket: `wss://api.parkircepat.com/graphql`
+
+## Support
+
+Untuk bantuan teknis:
+- Email: support@parkircepat.com
+- Discord: [ParkirCepat Dev](https://discord.gg/parkircepat)
+- GitHub Issues

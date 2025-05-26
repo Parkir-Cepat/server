@@ -13,7 +13,8 @@ export class User {
     await Promise.all([
       db.collection(this.collection).createIndex({ email: 1 }, { unique: true }),
       db.collection(this.collection).createIndex({ role: 1 }),
-      db.collection(this.collection).createIndex({ createdAt: 1 })
+      db.collection(this.collection).createIndex({ createdAt: 1 }),
+      db.collection(this.collection).createIndex({ googleId: 1 })
     ]);
   }
 
@@ -38,17 +39,58 @@ export class User {
   }
 
   /**
+   * Mencari user berdasarkan Google ID
+   * @param {string} googleId - Google ID user
+   * @returns {Promise<Object>} User document
+   */
+  static async findByGoogleId(googleId) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ googleId });
+  }
+
+  /**
+   * Update last login user
+   * @param {string} id - ID user
+   * @returns {Promise<Object>} Updated user document
+   */
+  static async updateLastLogin(id) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: id },
+      { 
+        $set: { 
+          lastLogin: new Date(),
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+    return result.value;
+  }
+
+  /**
    * Membuat user baru
    * @param {Object} userData - Data user
    * @returns {Promise<Object>} User document yang baru dibuat
    */
   static async create(userData) {
     const db = getDB();
-    const { email, password, name, role = 'user' } = userData;
+    const { 
+      email, 
+      password, 
+      name, 
+      role = 'user',
+      googleId = null,
+      avatar = null,
+      isEmailVerified = false
+    } = userData;
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    // Hash password jika bukan dari Google Auth
+    let hashedPassword = password;
+    if (!password.startsWith('GOOGLE_AUTH_')) {
+      const salt = await bcrypt.genSalt(10);
+      hashedPassword = await bcrypt.hash(password, salt);
+    }
 
     const result = await db.collection(this.collection).insertOne({
       email,
@@ -56,6 +98,10 @@ export class User {
       name,
       role,
       saldo: 0,
+      googleId,
+      avatar,
+      isEmailVerified,
+      lastLogin: new Date(),
       createdAt: new Date(),
       updatedAt: new Date()
     });

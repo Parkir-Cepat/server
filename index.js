@@ -15,6 +15,8 @@ import resolvers from './schemas/resolvers/index.js';
 import { verifyNotification } from './helpers/midtrans.js';
 import { Payment } from './models/Payment.js';
 import { SaldoTransaction } from './models/SaldoTransaction.js';
+import session from 'express-session';
+import passport from './helpers/googleAuth.js';
 
 
 // Load environment variables
@@ -76,12 +78,52 @@ const startServer = async () => {
 
     // Apply middleware
     app.use(
-      '/graphql',
       cors({
         origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
         credentials: true,
+      })
+    );
+    app.use(express.json());
+
+    // Setup session
+    app.use(
+      session({
+        secret: process.env.SESSION_SECRET || 'your-secret-key',
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          secure: process.env.NODE_ENV === 'production',
+          maxAge: 24 * 60 * 60 * 1000 // 24 jam
+        }
+      })
+    );
+
+    // Initialize Passport
+    app.use(passport.initialize());
+    app.use(passport.session());
+
+    // Google OAuth routes
+    app.get('/auth/google',
+      passport.authenticate('google', { 
+        scope: ['profile', 'email'],
+        session: false 
+      })
+    );
+
+    app.get('/auth/google/callback',
+      passport.authenticate('google', { 
+        session: false,
+        failureRedirect: process.env.CLIENT_URL + '/login?error=google-auth-failed'
       }),
-      express.json(),
+      (req, res) => {
+        const token = generateGoogleAuthToken(req.user);
+        res.redirect(process.env.CLIENT_URL + `/login?token=${token}`);
+      }
+    );
+
+    // GraphQL endpoint
+    app.use(
+      '/graphql',
       expressMiddleware(server, {
         context: async ({ req }) => {
           return await authContext({ req });
