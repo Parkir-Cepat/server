@@ -1,97 +1,149 @@
-import { Model } from 'mongoloquent';
+import { getDB } from '../config/db.js';
 
-export class Payment extends Model {
-  static collectionName = 'payments';
-  
-  static schema = {
-    bookingId: { type: 'objectId', ref: 'bookings', required: true },
-    transactionId: { type: 'string', required: true, unique: true },
-    paymentMethod: { 
-      type: 'string',
-      enum: ['qris', 'gopay', 'shopeepay', 'saldo'],
-      required: true
-    },
-    amount: { type: 'number', required: true },
-    status: { 
-      type: 'string',
-      enum: ['pending', 'completed', 'failed'],
-      default: 'pending'
-    },
-    qrCodeUrl: { type: 'string' }, // URL for QRIS code
-    createdAt: { type: 'date', default: Date.now },
-    updatedAt: { type: 'date', default: Date.now }
-  };
+export class Payment {
+  static collection = 'payments';
 
-  // Create indexes
-  static async createIndexes() {
-    await this.collection.createIndex({ bookingId: 1 });
-    await this.collection.createIndex({ transactionId: 1 }, { unique: true });
-    await this.collection.createIndex({ createdAt: 1 });
+  /**
+   * Setup indexes untuk collection
+   */
+  static async setupIndexes() {
+    const db = getDB();
+    await db.collection(this.collection).createIndex({ bookingId: 1 }, { unique: true });
+    await db.collection(this.collection).createIndex({ transactionId: 1 }, { unique: true });
+    await db.collection(this.collection).createIndex({ status: 1 });
+    await db.collection(this.collection).createIndex({ createdAt: 1 });
   }
 
-  // Hooks
-  static async beforeSave(next) {
-    this.updatedAt = new Date();
-    next();
+  /**
+   * Mencari pembayaran berdasarkan ID
+   * @param {string} id - ID pembayaran
+   * @returns {Promise<Object>} Payment document
+   */
+  static async findById(id) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ _id: id });
   }
 
-  // Create payment for booking
-  static async createPayment(paymentData) {
-    const { bookingId, paymentMethod } = paymentData;
-    
-    // Get booking details
-    const booking = await this.model('Booking').findById(bookingId);
-    if (!booking) throw new Error('Booking tidak ditemukan');
-    
-    if (booking.status !== 'pending') {
-      throw new Error('Booking tidak dapat dibayar');
-    }
+  /**
+   * Mencari pembayaran berdasarkan ID transaksi
+   * @param {string} transactionId - ID transaksi
+   * @returns {Promise<Object>} Payment document
+   */
+  static async findByTransactionId(transactionId) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ transactionId });
+  }
 
-    // If using saldo, check and deduct user's saldo
-    if (paymentMethod === 'saldo') {
-      const user = await this.model('User').findById(booking.userId);
-      await user.deductSaldo(booking.cost);
-    }
+  /**
+   * Mendapatkan pembayaran untuk booking tertentu
+   * @param {string} bookingId - ID booking
+   * @returns {Promise<Object>} Payment document
+   */
+  static async getByBooking(bookingId) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ bookingId });
+  }
 
-    // Create payment record
-    const payment = await this.create({
-      ...paymentData,
-      amount: booking.cost,
-      status: paymentMethod === 'saldo' ? 'completed' : 'pending'
+  /**
+   * Mendapatkan riwayat pembayaran user
+   * @param {string} userId - ID user
+   * @returns {Promise<Array>} Array of Payment documents
+   */
+  static async getByUser(userId) {
+    const db = getDB();
+    const bookings = await db.collection('bookings')
+      .find({ userId })
+      .project({ _id: 1 })
+      .toArray();
+
+    const bookingIds = bookings.map(booking => booking._id);
+
+    return await db.collection(this.collection)
+      .find({ bookingId: { $in: bookingIds } })
+      .sort({ createdAt: -1 })
+      .toArray();
+  }
+
+  /**
+   * Membuat pembayaran baru
+   * @param {Object} paymentData - Data pembayaran
+   * @returns {Promise<Object>} Payment document yang baru dibuat
+   */
+  static async create(paymentData) {
+    const db = getDB();
+    const {
+      bookingId,
+      transactionId,
+      paymentMethod,
+      amount,
+      status,
+      qrCodeUrl
+    } = paymentData;
+
+    const result = await db.collection(this.collection).insertOne({
+      bookingId,
+      transactionId,
+      paymentMethod,
+      amount,
+      status,
+      qrCodeUrl,
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
 
-    // If saldo payment, confirm booking immediately
-    if (paymentMethod === 'saldo') {
-      await this.model('Booking').confirmBooking(bookingId);
-    }
-
-    return payment;
+    return {
+      _id: result.insertedId,
+      bookingId,
+      transactionId,
+      paymentMethod,
+      amount,
+      status,
+      qrCodeUrl,
+      createdAt: new Date()
+    };
   }
 
-  // Update payment status (e.g., from Midtrans webhook)
-  static async updatePaymentStatus(transactionId, newStatus) {
-    const payment = await this.findOne({ transactionId });
-    if (!payment) throw new Error('Pembayaran tidak ditemukan');
-
-    const updatedPayment = await this.findOneAndUpdate(
-      { transactionId },
+  /**
+   * Update status pembayaran
+   * @param {string} id - ID pembayaran
+   * @param {string} status - Status baru
+   * @returns {Promise<Object>} Updated Payment document
+   */
+  static async updateStatus(id, status) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: id },
       { 
-        status: newStatus,
-        updatedAt: new Date()
+        $set: {
+          status,
+          updatedAt: new Date()
+        }
       },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
-    // If payment completed, confirm the booking
-    if (newStatus === 'completed') {
-      await this.model('Booking').confirmBooking(payment.bookingId);
-    }
-
-    return updatedPayment;
+    return result.value;
   }
 
-  // Get payment by booking
-  static async getPaymentByBooking(bookingId) {
-    return await this.findOne({ bookingId }).populate('bookingId');
+  /**
+   * Update status pembayaran berdasarkan ID transaksi
+   * @param {string} transactionId - ID transaksi
+   * @param {string} status - Status baru
+   * @returns {Promise<Object>} Updated Payment document
+   */
+  static async updateStatusByTransactionId(transactionId, status) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { transactionId },
+      { 
+        $set: {
+          status,
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    return result.value;
   }
 } 

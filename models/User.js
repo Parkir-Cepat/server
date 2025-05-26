@@ -1,75 +1,147 @@
-import { Model } from 'mongoloquent';
+import { getDB } from '../config/db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 
-export class User extends Model {
-  static collectionName = 'users';
-  
-  // Define schema fields and their types
-  static schema = {
-    email: { type: 'string', required: true, unique: true },
-    password: { type: 'string', required: true },
-    name: { type: 'string', required: true },
-    role: { type: 'string', enum: ['user', 'landowner'], default: 'user' },
-    saldo: { type: 'number', default: 0 },
-    createdAt: { type: 'date', default: Date.now }
-  };
+export class User {
+  static collection = 'users';
 
-  // Create indexes
-  static async createIndexes() {
-    await this.collection.createIndex({ email: 1 }, { unique: true });
-    await this.collection.createIndex({ createdAt: 1 });
+  /**
+   * Setup indexes untuk collection
+   */
+  static async setupIndexes() {
+    const db = getDB();
+    await Promise.all([
+      db.collection(this.collection).createIndex({ email: 1 }, { unique: true }),
+      db.collection(this.collection).createIndex({ role: 1 }),
+      db.collection(this.collection).createIndex({ createdAt: 1 })
+    ]);
   }
 
-  // Hooks before save
-  static async beforeSave(next) {
-    if (this.isModified('password')) {
+  /**
+   * Mencari user berdasarkan ID
+   * @param {string} id - ID user
+   * @returns {Promise<Object>} User document
+   */
+  static async findById(id) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ _id: id });
+  }
+
+  /**
+   * Mencari user berdasarkan email
+   * @param {string} email - Email user
+   * @returns {Promise<Object>} User document
+   */
+  static async findByEmail(email) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ email });
+  }
+
+  /**
+   * Membuat user baru
+   * @param {Object} userData - Data user
+   * @returns {Promise<Object>} User document yang baru dibuat
+   */
+  static async create(userData) {
+    const db = getDB();
+    const { email, password, name, role = 'user' } = userData;
+
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const result = await db.collection(this.collection).insertOne({
+      email,
+      password: hashedPassword,
+      name,
+      role,
+      saldo: 0,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    });
+
+    return {
+      _id: result.insertedId,
+      email,
+      name,
+      role,
+      saldo: 0,
+      createdAt: new Date(),
+    };
+  }
+
+  /**
+   * Update profil user
+   * @param {string} id - ID user
+   * @param {Object} updates - Data yang akan diupdate
+   * @returns {Promise<Object>} Updated user document
+   */
+  static async update(id, updates) {
+    const db = getDB();
+    const updateData = {
+      ...updates,
+      updatedAt: new Date()
+    };
+
+    // Jika ada update password, hash dulu
+    if (updates.password) {
       const salt = await bcrypt.genSalt(10);
-      this.password = await bcrypt.hash(this.password, salt);
+      updateData.password = await bcrypt.hash(updates.password, salt);
     }
-    next();
+
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: id },
+      { $set: updateData },
+      { returnDocument: 'after' }
+    );
+
+    return result.value;
   }
 
-  // Instance methods
-  async comparePassword(candidatePassword) {
-    return bcrypt.compare(candidatePassword, this.password);
+  /**
+   * Update saldo user
+   * @param {string} id - ID user
+   * @param {number} amount - Jumlah perubahan saldo (positif untuk penambahan, negatif untuk pengurangan)
+   * @returns {Promise<Object>} Updated user document
+   */
+  static async updateSaldo(id, amount) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: id },
+      { 
+        $inc: { saldo: amount },
+        $set: { updatedAt: new Date() }
+      },
+      { returnDocument: 'after' }
+    );
+
+    return result.value;
   }
 
-  generateAuthToken() {
+  /**
+   * Membandingkan password
+   * @param {string} hashedPassword - Password yang sudah di-hash
+   * @param {string} password - Password yang akan dibandingkan
+   * @returns {Promise<boolean>} Hasil perbandingan
+   */
+  static async comparePassword(hashedPassword, password) {
+    return await bcrypt.compare(password, hashedPassword);
+  }
+
+  /**
+   * Generate JWT token
+   * @param {Object} user - User document
+   * @returns {string} JWT token
+   */
+  static generateAuthToken(user) {
     return jwt.sign(
       { 
-        id: this._id,
-        email: this.email,
-        role: this.role 
+        id: user._id,
+        email: user.email,
+        role: user.role
       },
       process.env.JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '7d' }
     );
-  }
-
-  // Static methods for saldo operations
-  static async addSaldo(userId, amount) {
-    return await this.findByIdAndUpdate(
-      userId,
-      { $inc: { saldo: amount } },
-      { new: true }
-    );
-  }
-
-  static async deductSaldo(userId, amount) {
-    const user = await this.findById(userId);
-    if (!user || user.saldo < amount) {
-      throw new Error('Saldo tidak mencukupi');
-    }
-    return await this.findByIdAndUpdate(
-      userId,
-      { $inc: { saldo: -amount } },
-      { new: true }
-    );
-  }
-
-  // Get user's parkings (for landowner)
-  static async getParkings(userId) {
-    return await this.model('Parking').find({ ownerId: userId });
   }
 } 

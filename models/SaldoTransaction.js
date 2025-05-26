@@ -1,87 +1,169 @@
-import { Model } from 'mongoloquent';
+import { getDB } from '../config/db.js';
 
-export class SaldoTransaction extends Model {
-  static collectionName = 'saldo_transactions';
-  
-  static schema = {
-    userId: { type: 'objectId', ref: 'users', required: true },
-    amount: { type: 'number', required: true }, // Positive for top-up, negative for deduction
-    type: { 
-      type: 'string',
-      enum: ['top-up', 'deduction'],
-      required: true
-    },
-    transactionId: { type: 'string', required: true, unique: true },
-    status: { 
-      type: 'string',
-      enum: ['pending', 'completed', 'failed'],
-      default: 'pending'
-    },
-    createdAt: { type: 'date', default: Date.now }
-  };
+export class SaldoTransaction {
+  static collection = 'saldoTransactions';
 
-  // Create indexes
-  static async createIndexes() {
-    await this.collection.createIndex({ userId: 1 });
-    await this.collection.createIndex({ transactionId: 1 }, { unique: true });
-    await this.collection.createIndex({ createdAt: 1 });
+  /**
+   * Setup indexes untuk collection
+   */
+  static async setupIndexes() {
+    const db = getDB();
+    await db.collection(this.collection).createIndex({ userId: 1 });
+    await db.collection(this.collection).createIndex({ transactionId: 1 }, { unique: true });
+    await db.collection(this.collection).createIndex({ status: 1 });
+    await db.collection(this.collection).createIndex({ createdAt: 1 });
   }
 
-  // Create top-up transaction
-  static async createTopUp(userId, amount, transactionId) {
-    if (amount <= 0) throw new Error('Jumlah top-up harus lebih dari 0');
+  /**
+   * Mencari transaksi berdasarkan ID
+   * @param {string} id - ID transaksi
+   * @returns {Promise<Object>} SaldoTransaction document
+   */
+  static async findById(id) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ _id: id });
+  }
 
-    return await this.create({
+  /**
+   * Mencari transaksi berdasarkan ID transaksi
+   * @param {string} transactionId - ID transaksi
+   * @returns {Promise<Object>} SaldoTransaction document
+   */
+  static async findByTransactionId(transactionId) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ transactionId });
+  }
+
+  /**
+   * Mendapatkan riwayat transaksi user
+   * @param {string} userId - ID user
+   * @returns {Promise<Array>} Array of SaldoTransaction documents
+   */
+  static async getByUser(userId) {
+    const db = getDB();
+    return await db.collection(this.collection)
+      .find({ userId })
+      .sort({ createdAt: -1 })
+      .toArray();
+  }
+
+  /**
+   * Membuat transaksi saldo baru
+   * @param {Object} transactionData - Data transaksi
+   * @returns {Promise<Object>} SaldoTransaction document yang baru dibuat
+   */
+  static async create(transactionData) {
+    const db = getDB();
+    const {
       userId,
+      type,
       amount,
-      type: 'top-up',
+      paymentMethod,
+      status,
       transactionId,
-      status: 'pending'
-    });
-  }
+      qrCodeUrl
+    } = transactionData;
 
-  // Create deduction transaction
-  static async createDeduction(userId, amount, description = 'Pembayaran parkir') {
-    if (amount <= 0) throw new Error('Jumlah deduction harus lebih dari 0');
-
-    const transactionId = 'DED_' + Date.now() + '_' + userId;
-
-    return await this.create({
+    const result = await db.collection(this.collection).insertOne({
       userId,
-      amount: -amount, // Store as negative for deductions
-      type: 'deduction',
+      type,
+      amount,
+      paymentMethod,
+      status,
       transactionId,
-      status: 'completed' // Deductions are always completed immediately
+      qrCodeUrl,
+      createdAt: new Date(),
+      updatedAt: new Date()
     });
+
+    return {
+      _id: result.insertedId,
+      userId,
+      type,
+      amount,
+      paymentMethod,
+      status,
+      transactionId,
+      qrCodeUrl,
+      createdAt: new Date()
+    };
   }
 
-  // Complete top-up transaction (e.g., from Midtrans webhook)
-  static async completeTopUp(transactionId) {
-    const transaction = await this.findOne({ transactionId });
-    if (!transaction) throw new Error('Transaksi tidak ditemukan');
-
-    if (transaction.status !== 'pending') {
-      throw new Error('Status transaksi tidak valid');
-    }
-
-    // Update user's saldo
-    await this.model('User').addSaldo(transaction.userId, transaction.amount);
-
-    // Update transaction status
-    return await this.findOneAndUpdate(
-      { transactionId },
-      { status: 'completed' },
-      { new: true }
+  /**
+   * Update status transaksi
+   * @param {string} id - ID transaksi
+   * @param {string} status - Status baru
+   * @returns {Promise<Object>} Updated SaldoTransaction document
+   */
+  static async updateStatus(id, status) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: id },
+      { 
+        $set: {
+          status,
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
     );
+
+    return result.value;
   }
 
-  // Get user's transaction history
-  static async getUserTransactions(userId) {
-    return await this.find({ userId }).sort({ createdAt: -1 });
+  /**
+   * Update status transaksi berdasarkan ID transaksi
+   * @param {string} transactionId - ID transaksi
+   * @param {string} status - Status baru
+   * @returns {Promise<Object>} Updated SaldoTransaction document
+   */
+  static async updateStatusByTransactionId(transactionId, status) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { transactionId },
+      { 
+        $set: {
+          status,
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    return result.value;
   }
 
-  // Get transaction by ID
-  static async getByTransactionId(transactionId) {
-    return await this.findOne({ transactionId });
+  /**
+   * Mendapatkan total saldo masuk dan keluar user
+   * @param {string} userId - ID user
+   * @returns {Promise<Object>} Total saldo masuk dan keluar
+   */
+  static async getUserSaldoSummary(userId) {
+    const db = getDB();
+    const result = await db.collection(this.collection).aggregate([
+      {
+        $match: {
+          userId,
+          status: 'success'
+        }
+      },
+      {
+        $group: {
+          _id: '$type',
+          total: { $sum: '$amount' }
+        }
+      }
+    ]).toArray();
+
+    const summary = {
+      credit: 0,
+      debit: 0
+    };
+
+    result.forEach(item => {
+      summary[item._id] = item.total;
+    });
+
+    return summary;
   }
 } 

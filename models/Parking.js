@@ -1,76 +1,84 @@
-import { Model } from 'mongoloquent';
+import { ObjectId } from "mongodb";
+import { getDB } from "../config/db.js";
 
-export class Parking extends Model {
-  static collectionName = 'parkings';
-  
-  // Define schema fields and their types
-  static schema = {
-    name: { type: 'string', required: true },
-    location: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', default: 'Point' },
-        coordinates: { type: 'array' } // [longitude, latitude]
-      },
-      required: true
-    },
-    availableSlots: { type: 'number', required: true },
-    totalSlots: { type: 'number', required: true },
-    tariff: { type: 'number', required: true }, // IDR per hour
-    ownerId: { type: 'objectId', ref: 'users', required: true },
-    createdAt: { type: 'date', default: Date.now }
-  };
+export class Parking {
+  static collection = "parkings";
 
-  // Create indexes
-  static async createIndexes() {
-    await this.collection.createIndex({ location: '2dsphere' });
-    await this.collection.createIndex({ ownerId: 1 });
-    await this.collection.createIndex({ createdAt: 1 });
+  static async findById(id) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
   }
 
-  // Find nearby parkings
+  static async create(parkingData) {
+    const db = getDB();
+    const parking = {
+      ...parkingData,
+      location: {
+        type: "Point",
+        coordinates: parkingData.location.coordinates
+      },
+      availableSlots: parkingData.totalSlots,
+      createdAt: new Date()
+    };
+
+    const result = await db.collection(this.collection).insertOne(parking);
+    return { _id: result.insertedId, ...parking };
+  }
+
   static async findNearby({ longitude, latitude, maxDistance = 5000 }) {
-    return await this.find({
+    const db = getDB();
+    return await db.collection(this.collection).find({
       location: {
         $near: {
           $geometry: {
-            type: 'Point',
+            type: "Point",
             coordinates: [longitude, latitude]
           },
-          $maxDistance: maxDistance // in meters
+          $maxDistance: maxDistance // dalam meter
         }
       },
       availableSlots: { $gt: 0 }
-    });
+    }).toArray();
   }
 
-  // Update available slots
   static async updateAvailability(parkingId, change) {
+    const db = getDB();
     const parking = await this.findById(parkingId);
-    if (!parking) throw new Error('Tempat parkir tidak ditemukan');
+    
+    if (!parking) {
+      throw new Error("Tempat parkir tidak ditemukan");
+    }
 
     const newAvailable = parking.availableSlots + change;
     if (newAvailable < 0 || newAvailable > parking.totalSlots) {
-      throw new Error('Slot parkir tidak valid');
+      throw new Error("Slot parkir tidak valid");
     }
 
-    return await this.findByIdAndUpdate(
-      parkingId,
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(parkingId) },
       { $inc: { availableSlots: change } },
-      { new: true }
+      { returnDocument: "after" }
     );
+    return result.value;
   }
 
-  // Get active bookings for this parking
-  static async getActiveBookings(parkingId) {
-    return await this.model('Booking').find({
-      parkingId,
-      status: { $in: ['pending', 'confirmed'] }
-    }).populate('userId');
+  static async findByOwner(ownerId) {
+    const db = getDB();
+    return await db.collection(this.collection)
+      .find({ ownerId: new ObjectId(ownerId) })
+      .toArray();
   }
 
-  // Get owner details
-  async getOwner() {
-    return await this.model('User').findById(this.ownerId);
+  // Inisialisasi indexes yang diperlukan
+  static async createIndexes() {
+    const db = getDB();
+    await Promise.all([
+      // Index untuk pencarian berdasarkan lokasi
+      db.collection(this.collection).createIndex({ location: "2dsphere" }),
+      // Index untuk pencarian berdasarkan pemilik
+      db.collection(this.collection).createIndex({ ownerId: 1 }),
+      // Index untuk sorting berdasarkan waktu pembuatan
+      db.collection(this.collection).createIndex({ createdAt: 1 })
+    ]);
   }
 } 

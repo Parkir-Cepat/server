@@ -1,101 +1,164 @@
-import { Model } from 'mongoloquent';
+import { ObjectId } from "mongodb";
+import { getDB } from "../config/db.js";
 
-export class ParkingLot extends Model {
-  static collectionName = 'parking_lots';
-  
-  // Define schema fields and their types
-  static schema = {
-    name: { type: 'string', required: true },
-    address: { type: 'string', required: true },
-    location: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', default: 'Point' },
-        coordinates: { type: 'array' } // [longitude, latitude]
-      },
-      required: true
-    },
-    ownerId: { type: 'objectId', ref: 'users', required: true },
-    capacity: {
-      car: { type: 'number', default: 0 },
-      motorcycle: { type: 'number', default: 0 }
-    },
-    available: {
-      car: { type: 'number', default: 0 },
-      motorcycle: { type: 'number', default: 0 }
-    },
-    rates: {
-      car: { type: 'number', required: true },
-      motorcycle: { type: 'number', required: true }
-    },
-    operationalHours: {
-      open: { type: 'string', required: true }, // format: "HH:mm"
-      close: { type: 'string', required: true } // format: "HH:mm"
-    },
-    facilities: [{ type: 'string' }], // ['cctv', 'roofed', 'security', etc]
-    images: [{ type: 'string' }], // URLs to parking lot images
-    status: { type: 'string', enum: ['active', 'inactive'], default: 'active' },
-    rating: { type: 'number', default: 0 },
-    reviewCount: { type: 'number', default: 0 },
-    createdAt: { type: 'date', default: Date.now },
-    updatedAt: { type: 'date', default: Date.now }
-  };
+export class ParkingLot {
+  static collection = "parking_lots";
 
-  // Create geospatial index
-  static async createIndexes() {
-    await this.collection.createIndex({ location: '2dsphere' });
+  static async findById(id) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
   }
 
-  // Find nearby parking lots
+  static async create(parkingLotData) {
+    const db = getDB();
+    const parkingLot = {
+      ...parkingLotData,
+      location: {
+        type: "Point",
+        coordinates: parkingLotData.location.coordinates
+      },
+      available: {
+        car: parkingLotData.capacity.car,
+        motorcycle: parkingLotData.capacity.motorcycle
+      },
+      rating: 0,
+      reviewCount: 0,
+      status: "active",
+      ownerId: new ObjectId(parkingLotData.ownerId),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await db.collection(this.collection).insertOne(parkingLot);
+    return { _id: result.insertedId, ...parkingLot };
+  }
+
   static async findNearby({ longitude, latitude, maxDistance = 5000, vehicleType }) {
+    const db = getDB();
     const query = {
       location: {
         $near: {
           $geometry: {
-            type: 'Point',
+            type: "Point",
             coordinates: [longitude, latitude]
           },
-          $maxDistance: maxDistance // in meters
+          $maxDistance: maxDistance // dalam meter
         }
       },
-      status: 'active'
+      status: "active"
     };
 
-    // Add vehicle type availability check if specified
+    // Tambahkan pengecekan ketersediaan kendaraan jika ditentukan
     if (vehicleType) {
-      query['available.' + vehicleType] = { $gt: 0 };
+      query["available." + vehicleType] = { $gt: 0 };
     }
 
-    return await this.find(query);
+    return await db.collection(this.collection).find(query).toArray();
   }
 
-  // Update availability
   static async updateAvailability(parkingLotId, vehicleType, change) {
+    const db = getDB();
     const updateQuery = {};
-    updateQuery['available.' + vehicleType] = change;
+    updateQuery["available." + vehicleType] = change;
 
-    return await this.findByIdAndUpdate(
-      parkingLotId,
-      { $inc: updateQuery },
-      { new: true }
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(parkingLotId) },
+      { 
+        $inc: updateQuery,
+        $set: { updatedAt: new Date() }
+      },
+      { returnDocument: "after" }
     );
+    return result.value;
   }
 
-  // Update rating
   static async updateRating(parkingLotId, newRating) {
+    const db = getDB();
     const parkingLot = await this.findById(parkingLotId);
+
+    if (!parkingLot) {
+      throw new Error("Tempat parkir tidak ditemukan");
+    }
+
     const newAvgRating = (
       (parkingLot.rating * parkingLot.reviewCount + newRating) / 
       (parkingLot.reviewCount + 1)
     ).toFixed(1);
 
-    return await this.findByIdAndUpdate(
-      parkingLotId,
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(parkingLotId) },
       { 
-        $set: { rating: parseFloat(newAvgRating) },
+        $set: { 
+          rating: parseFloat(newAvgRating),
+          updatedAt: new Date()
+        },
         $inc: { reviewCount: 1 }
       },
-      { new: true }
+      { returnDocument: "after" }
     );
+    return result.value;
+  }
+
+  static async findByOwner(ownerId) {
+    const db = getDB();
+    return await db.collection(this.collection)
+      .find({ 
+        ownerId: new ObjectId(ownerId),
+        status: "active"
+      })
+      .toArray();
+  }
+
+  static async update(parkingLotId, updateData) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(parkingLotId) },
+      { 
+        $set: {
+          ...updateData,
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: "after" }
+    );
+    return result.value;
+  }
+
+  static async delete(parkingLotId) {
+    const db = getDB();
+    // Soft delete dengan mengubah status menjadi inactive
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(parkingLotId) },
+      { 
+        $set: { 
+          status: "inactive",
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: "after" }
+    );
+    return result.value;
+  }
+
+  static async setupIndexes() {
+    const db = getDB();
+    await Promise.all([
+      // Index untuk pencarian berdasarkan lokasi
+      db.collection(this.collection).createIndex({ location: "2dsphere" }),
+      // Index untuk pencarian berdasarkan pemilik
+      db.collection(this.collection).createIndex({ ownerId: 1 }),
+      // Index untuk pencarian berdasarkan status
+      db.collection(this.collection).createIndex({ status: 1 }),
+      // Index untuk sorting berdasarkan rating
+      db.collection(this.collection).createIndex({ rating: -1 }),
+      // Index untuk sorting berdasarkan waktu pembuatan
+      db.collection(this.collection).createIndex({ createdAt: 1 }),
+      // Index untuk pencarian berdasarkan nama dan alamat
+      db.collection(this.collection).createIndex({ name: 'text', address: 'text' })
+    ]);
+  }
+
+  static async createIndexes() {
+    return await this.setupIndexes();
   }
 } 
