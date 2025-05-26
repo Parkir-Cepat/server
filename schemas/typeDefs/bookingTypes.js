@@ -12,6 +12,9 @@ export const bookingTypes = `#graphql
     status: String!
     createdAt: String!
     payment: Payment
+    qrCode: String
+    entryQR: String
+    exitQR: String
   }
 
   input CreateBookingInput {
@@ -33,6 +36,15 @@ export const bookingTypes = `#graphql
     cancelBooking(id: ID!): Booking!
     confirmBooking(id: ID!): Booking!
     extendBooking(id: ID!, additionalDuration: Int!): Booking!
+    generateBookingQR(bookingId: ID!): Booking!
+    verifyQRCode(qrToken: String!): QRVerificationResult!
+    generateParkingAccessQR(bookingId: ID!, type: String!): String!
+  }
+
+  type QRVerificationResult {
+    isValid: Boolean!
+    booking: Booking
+    message: String!
   }
 
   type Subscription {

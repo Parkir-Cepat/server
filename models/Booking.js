@@ -1,5 +1,6 @@
 import { ObjectId } from "mongodb";
 import { getDB } from "../config/db.js";
+import { generateBookingQR, generateParkingAccessQR } from "../helpers/qrcode.js";
 
 export class Booking {
   static collection = "bookings";
@@ -142,5 +143,126 @@ export class Booking {
         }
       })
       .toArray();
+  }
+
+  static async generateQRCode(id) {
+    const db = getDB();
+    const booking = await this.findById(id);
+    
+    if (!booking) {
+      throw new Error("Booking tidak ditemukan");
+    }
+
+    if (booking.status !== 'confirmed') {
+      throw new Error("QR Code hanya bisa dibuat untuk booking yang sudah dikonfirmasi");
+    }
+
+    // Generate QR code
+    const qrCode = await generateBookingQR(booking);
+
+    // Update booking dengan QR code
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(id) },
+      { 
+        $set: {
+          qrCode,
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    return result.value;
+  }
+
+  static async generateAccessQR(id, type) {
+    const booking = await this.findById(id);
+    
+    if (!booking) {
+      throw new Error("Booking tidak ditemukan");
+    }
+
+    if (booking.status !== 'confirmed') {
+      throw new Error("QR Code akses hanya bisa dibuat untuk booking yang sudah dikonfirmasi");
+    }
+
+    const qrCode = await generateParkingAccessQR({
+      type, // 'entry' atau 'exit'
+      bookingId: id,
+      parkingLotId: booking.parkingLotId.toString()
+    });
+
+    // Update booking berdasarkan type
+    const db = getDB();
+    const updateField = type === 'entry' ? 'entryQR' : 'exitQR';
+    
+    await db.collection(this.collection).updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: {
+          [updateField]: qrCode,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    return qrCode;
+  }
+
+  static async findByParkingLot(parkingLotId) {
+    const db = getDB();
+    return await db.collection(this.collection)
+      .find({ parkingLotId: new ObjectId(parkingLotId) })
+      .sort({ startTime: -1 })
+      .toArray();
+  }
+
+  static async cancel(id) {
+    const db = getDB();
+    const booking = await this.findById(id);
+    
+    if (!booking) {
+      throw new Error("Booking tidak ditemukan");
+    }
+
+    if (booking.status === 'completed' || booking.status === 'cancelled') {
+      throw new Error("Booking sudah selesai atau dibatalkan");
+    }
+
+    // Update status booking
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(id) },
+      { 
+        $set: {
+          status: 'cancelled',
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    // Kembalikan slot parkir
+    await db.collection("parkings").updateOne(
+      { _id: booking.parkingLotId },
+      { $inc: { availableSlots: 1 } }
+    );
+
+    return result.value;
+  }
+
+  static async confirm(id) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(id) },
+      { 
+        $set: {
+          status: 'confirmed',
+          updatedAt: new Date()
+        }
+      },
+      { returnDocument: 'after' }
+    );
+
+    return result.value;
   }
 } 

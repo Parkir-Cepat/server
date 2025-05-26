@@ -45,6 +45,7 @@ const setupIndexes = async () => {
     const { Payment } = await import('../models/Payment.js');
     const { SaldoTransaction } = await import('../models/SaldoTransaction.js');
     const { Chat } = await import('../models/Chat.js');
+    const { Notification } = await import('../models/Notification.js');
 
     // Setup indexes untuk setiap collection
     await Promise.all([
@@ -53,7 +54,8 @@ const setupIndexes = async () => {
       Booking.setupIndexes(),
       Payment.setupIndexes(),
       SaldoTransaction.setupIndexes(),
-      Chat.setupIndexes()
+      Chat.setupIndexes(),
+      Notification.setupIndexes()
     ]);
 
     console.log('📑 Indexes berhasil dibuat');

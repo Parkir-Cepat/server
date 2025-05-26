@@ -5,6 +5,7 @@ import { User } from '../../models/User.js';
 import { ensureAuth } from '../../helpers/jwt.js';
 import { publish, subscribe, EVENTS } from '../../helpers/pubsub.js';
 import { getDB } from '../../config/db.js';
+import { verifyQRToken } from '../../helpers/qrcode.js';
 
 export const bookingResolvers = {
   Query: {
@@ -125,6 +126,83 @@ export const bookingResolvers = {
       });
 
       return updatedBooking;
+    },
+
+    // Generate QR Code untuk booking
+    generateBookingQR: async (_, { bookingId }, { user }) => {
+      ensureAuth(user);
+
+      const booking = await Booking.findById(bookingId);
+      if (!booking) throw new Error('Booking tidak ditemukan');
+
+      // Pastikan user yang buat booking atau owner parking lot
+      const parkingLot = await ParkingLot.findById(booking.parkingLotId);
+      if (booking.userId.toString() !== user._id && 
+          parkingLot.ownerId.toString() !== user._id) {
+        throw new Error('Anda tidak memiliki akses');
+      }
+
+      return await Booking.generateQRCode(bookingId);
+    },
+
+    // Verify QR Code
+    verifyQRCode: async (_, { qrToken }, { user }) => {
+      ensureAuth(user);
+
+      try {
+        const decoded = verifyQRToken(qrToken);
+        const booking = await Booking.findById(decoded.bookingId);
+
+        if (!booking) {
+          return {
+            isValid: false,
+            booking: null,
+            message: 'Booking tidak ditemukan'
+          };
+        }
+
+        // Pastikan QR code masih valid berdasarkan status booking
+        if (booking.status !== 'confirmed') {
+          return {
+            isValid: false,
+            booking,
+            message: 'Booking tidak valid atau sudah selesai'
+          };
+        }
+
+        return {
+          isValid: true,
+          booking,
+          message: 'QR Code valid'
+        };
+      } catch (error) {
+        return {
+          isValid: false,
+          booking: null,
+          message: error.message
+        };
+      }
+    },
+
+    // Generate QR Code untuk entry/exit parking
+    generateParkingAccessQR: async (_, { bookingId, type }, { user }) => {
+      ensureAuth(user);
+
+      const booking = await Booking.findById(bookingId);
+      if (!booking) throw new Error('Booking tidak ditemukan');
+
+      // Pastikan user yang buat booking atau owner parking lot
+      const parkingLot = await ParkingLot.findById(booking.parkingLotId);
+      if (booking.userId.toString() !== user._id && 
+          parkingLot.ownerId.toString() !== user._id) {
+        throw new Error('Anda tidak memiliki akses');
+      }
+
+      if (!['entry', 'exit'].includes(type)) {
+        throw new Error('Type harus entry atau exit');
+      }
+
+      return await Booking.generateAccessQR(bookingId, type);
     }
   },
 

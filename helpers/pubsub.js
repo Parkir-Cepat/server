@@ -19,6 +19,9 @@ export const EVENTS = {
   CHAT: {
     SENT: 'CHAT_SENT',
     RECEIVED: 'CHAT_RECEIVED'
+  },
+  NOTIFICATION: {
+    NEW: 'NOTIFICATION_NEW'
   }
 };
 
