@@ -10,6 +10,6 @@ const client = new MongoClient(uri, {
   },
 });
 
-const database = client.db("ParkirCepat");
+const database = client.db("Parkirin");
 
 export { database };
