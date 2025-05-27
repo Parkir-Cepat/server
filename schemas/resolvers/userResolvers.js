@@ -73,14 +73,24 @@ export const userResolvers = {
         token,
         user
       };
-    },
-
-    updateProfile: async (_, { name }, { user }) => {
+    },    updateProfile: async (_, { name }, { user }) => {
       if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
         extensions: { code: 'UNAUTHENTICATED' }
       });
 
+      // Add validation for name
+      if (!name || name.trim().length < 2) {
+        throw new GraphQLError("Nama harus minimal 2 karakter", {
+          extensions: { code: 'BAD_USER_INPUT' }
+        });
+      }
+
       const updatedUser = await User.update(user._id, { name });
+      if (!updatedUser) {
+        throw new GraphQLError("Gagal memperbarui profil", {
+          extensions: { code: 'INTERNAL_SERVER_ERROR' }
+        });
+      }
       return updatedUser;
     },
 

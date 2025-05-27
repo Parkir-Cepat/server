@@ -18,10 +18,8 @@ export class Booking {
       vehicleType,
       startTime,
       duration
-    } = bookingData;
-
-    // Dapatkan detail parkir
-    const parking = await db.collection("parkings").findOne({ 
+    } = bookingData;    // Dapatkan detail parkir
+    const parking = await db.collection("parking_lots").findOne({ 
       _id: new ObjectId(parkingLotId) 
     });
     
@@ -49,10 +47,8 @@ export class Booking {
       updatedAt: new Date()
     };
 
-    const result = await db.collection(this.collection).insertOne(booking);
-
-    // Update ketersediaan parkir
-    await db.collection("parkings").updateOne(
+    const result = await db.collection(this.collection).insertOne(booking);    // Update ketersediaan parkir
+    await db.collection("parking_lots").updateOne(
       { _id: new ObjectId(parkingLotId) },
       { $inc: { availableSlots: -1 } }
     );
@@ -69,11 +65,10 @@ export class Booking {
           status,
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   static async getActiveBookings(userId) {
@@ -116,11 +111,10 @@ export class Booking {
           cost: additionalCost
         },
         $set: { updatedAt: new Date() }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   static async getExpiredBookings() {
@@ -168,11 +162,10 @@ export class Booking {
           qrCode,
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   static async generateAccessQR(id, type) {
@@ -238,16 +231,13 @@ export class Booking {
           updatedAt: new Date()
         }
       },
-      { returnDocument: 'after' }
-    );
-
-    // Kembalikan slot parkir
-    await db.collection("parkings").updateOne(
+      { returnDocument: 'after' }    );    // Kembalikan slot parkir
+    await db.collection("parking_lots").updateOne(
       { _id: booking.parkingLotId },
       { $inc: { availableSlots: 1 } }
     );
 
-    return result.value;
+    return result;
   }
 
   static async confirm(id) {
@@ -259,10 +249,9 @@ export class Booking {
           status: 'confirmed',
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
-} 
+}

@@ -1,6 +1,7 @@
 import { getDB } from '../config/db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { ObjectId } from 'mongodb';
 
 export class User {
   static collection = 'users';
@@ -25,7 +26,11 @@ export class User {
    */
   static async findById(id) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: id });
+    let queryId = id;
+    if (typeof id === 'string' && /^[a-fA-F0-9]{24}$/.test(id)) {
+      queryId = new ObjectId(id);
+    }
+    return await db.collection(this.collection).findOne({ _id: queryId });
   }
 
   /**
@@ -62,10 +67,9 @@ export class User {
           lastLogin: new Date(),
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
-    return result.value;
+    return result;
   }
 
   /**
@@ -133,15 +137,13 @@ export class User {
     if (updates.password) {
       const salt = await bcrypt.genSalt(10);
       updateData.password = await bcrypt.hash(updates.password, salt);
-    }
-
-    const result = await db.collection(this.collection).findOneAndUpdate(
+    }    const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: id },
       { $set: updateData },
       { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   /**
@@ -151,8 +153,7 @@ export class User {
    * @returns {Promise<Object>} Updated user document
    */
   static async updateSaldo(id, amount) {
-    const db = getDB();
-    const result = await db.collection(this.collection).findOneAndUpdate(
+    const db = getDB();    const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: id },
       { 
         $inc: { saldo: amount },
@@ -161,7 +162,7 @@ export class User {
       { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   /**

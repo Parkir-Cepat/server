@@ -36,13 +36,12 @@ export class Chat {
   }
 
   static async markAsRead(messageId) {
-    const db = getDB();
-    const result = await db.collection(this.collection).findOneAndUpdate(
+    const db = getDB();    const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: new ObjectId(messageId) },
       { $set: { read: true } },
       { returnDocument: "after" }
     );
-    return result.value;
+    return result;
   }
 
   static async getChatHistory(userId1, userId2, limit = 50) {

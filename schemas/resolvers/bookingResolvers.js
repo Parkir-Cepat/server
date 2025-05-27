@@ -73,11 +73,11 @@ export const bookingResolvers = {
       const booking = await Booking.findById(id);
       if (!booking) throw new Error('Booking tidak ditemukan');
       
-      if (booking.userId.toString() !== user._id) {
+      if (booking.userId.toString() !== user._id.toString()) {
         throw new Error('Anda tidak memiliki akses');
       }
 
-      const updatedBooking = await Booking.updateStatus(id, 'cancelled');
+      const updatedBooking = await Booking.cancel(id);
 
       // Publish event untuk subscription
       await publish(EVENTS.BOOKING.UPDATED, {
@@ -126,9 +126,7 @@ export const bookingResolvers = {
       });
 
       return updatedBooking;
-    },
-
-    // Generate QR Code untuk booking
+    },    // Generate QR Code untuk booking
     generateBookingQR: async (_, { bookingId }, { user }) => {
       ensureAuth(user);
 
@@ -137,8 +135,8 @@ export const bookingResolvers = {
 
       // Pastikan user yang buat booking atau owner parking lot
       const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-      if (booking.userId.toString() !== user._id && 
-          parkingLot.ownerId.toString() !== user._id) {
+      if (booking.userId.toString() !== user._id.toString() && 
+          parkingLot.ownerId.toString() !== user._id.toString()) {
         throw new Error('Anda tidak memiliki akses');
       }
 
@@ -189,12 +187,10 @@ export const bookingResolvers = {
       ensureAuth(user);
 
       const booking = await Booking.findById(bookingId);
-      if (!booking) throw new Error('Booking tidak ditemukan');
-
-      // Pastikan user yang buat booking atau owner parking lot
+      if (!booking) throw new Error('Booking tidak ditemukan');      // Pastikan user yang buat booking atau owner parking lot
       const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-      if (booking.userId.toString() !== user._id && 
-          parkingLot.ownerId.toString() !== user._id) {
+      if (booking.userId.toString() !== user._id.toString() && 
+          parkingLot.ownerId.toString() !== user._id.toString()) {
         throw new Error('Anda tidak memiliki akses');
       }
 

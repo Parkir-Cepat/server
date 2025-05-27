@@ -1,4 +1,5 @@
 import { getDB } from '../config/db.js';
+import { ObjectId } from 'mongodb';
 
 export class Payment {
   static collection = 'payments';
@@ -18,10 +19,11 @@ export class Payment {
    * Mencari pembayaran berdasarkan ID
    * @param {string} id - ID pembayaran
    * @returns {Promise<Object>} Payment document
-   */
-  static async findById(id) {
+   */  static async findById(id) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: id });
+    // Handle both ObjectId and string inputs
+    const objectId = ObjectId.isValid(id) ? new ObjectId(id) : id;
+    return await db.collection(this.collection).findOne({ _id: objectId });
   }
 
   /**
@@ -38,10 +40,11 @@ export class Payment {
    * Mendapatkan pembayaran untuk booking tertentu
    * @param {string} bookingId - ID booking
    * @returns {Promise<Object>} Payment document
-   */
-  static async getByBooking(bookingId) {
+   */  static async getByBooking(bookingId) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ bookingId });
+    // Handle both ObjectId and string inputs
+    const objectId = ObjectId.isValid(bookingId) ? new ObjectId(bookingId) : bookingId;
+    return await db.collection(this.collection).findOne({ bookingId: objectId });
   }
 
   /**
@@ -110,19 +113,19 @@ export class Payment {
    * @returns {Promise<Object>} Updated Payment document
    */
   static async updateStatus(id, status) {
-    const db = getDB();
+    const db = getDB();    // Handle both ObjectId and string inputs
+    const objectId = ObjectId.isValid(id) ? new ObjectId(id) : id;
     const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: id },
+      { _id: objectId },
       { 
         $set: {
           status,
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   /**
@@ -140,10 +143,9 @@ export class Payment {
           status,
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
-} 
+}

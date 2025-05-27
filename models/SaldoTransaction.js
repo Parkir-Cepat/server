@@ -104,11 +104,10 @@ export class SaldoTransaction {
           status,
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   /**
@@ -126,11 +125,10 @@ export class SaldoTransaction {
           status,
           updatedAt: new Date()
         }
-      },
-      { returnDocument: 'after' }
+      },      { returnDocument: 'after' }
     );
 
-    return result.value;
+    return result;
   }
 
   /**
