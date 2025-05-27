@@ -1,6 +1,7 @@
 import { getDB } from '../config/db.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { ObjectId } from 'mongodb';
 
 export class User {
   static collection = 'users';
@@ -25,7 +26,11 @@ export class User {
    */
   static async findById(id) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: id });
+    let queryId = id;
+    if (typeof id === 'string' && /^[a-fA-F0-9]{24}$/.test(id)) {
+      queryId = new ObjectId(id);
+    }
+    return await db.collection(this.collection).findOne({ _id: queryId });
   }
 
   /**

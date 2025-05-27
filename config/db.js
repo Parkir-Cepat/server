@@ -4,13 +4,14 @@ import dotenv from "dotenv";
 dotenv.config();
 
 let db = null;
+let client = null;
 
 /**
  * Inisialisasi koneksi ke MongoDB
  */
 export const connectDB = async () => {
   try {
-    const client = await MongoClient.connect(process.env.MONGODB_URI);
+    client = await MongoClient.connect(process.env.MONGODB_URI);
     db = client.db();
     console.log('🗄️  Terhubung ke MongoDB');
 
@@ -31,6 +32,13 @@ export const getDB = () => {
     throw new Error('Database belum diinisialisasi');
   }
   return db;
+};
+
+export const getMongoClient = () => {
+  if (!client) {
+    throw new Error('MongoClient belum diinisialisasi');
+  }
+  return client;
 };
 
 /**

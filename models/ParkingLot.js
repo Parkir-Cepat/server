@@ -6,7 +6,11 @@ export class ParkingLot {
 
   static async findById(id) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
+    let queryId = id;
+    if (typeof id === 'string' && /^[a-fA-F0-9]{24}$/.test(id)) {
+      queryId = new ObjectId(id);
+    }
+    return await db.collection(this.collection).findOne({ _id: queryId });
   }
 
   static async create(parkingLotData) {
@@ -58,11 +62,15 @@ export class ParkingLot {
 
   static async updateAvailability(parkingLotId, vehicleType, change) {
     const db = getDB();
+    let queryId = parkingLotId;
+    if (typeof parkingLotId === 'string' && /^[a-fA-F0-9]{24}$/.test(parkingLotId)) {
+      queryId = new ObjectId(parkingLotId);
+    }
     const updateQuery = {};
     updateQuery["available." + vehicleType] = change;
 
     const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: new ObjectId(parkingLotId) },
+      { _id: queryId },
       { 
         $inc: updateQuery,
         $set: { updatedAt: new Date() }
@@ -74,7 +82,11 @@ export class ParkingLot {
 
   static async updateRating(parkingLotId, newRating) {
     const db = getDB();
-    const parkingLot = await this.findById(parkingLotId);
+    let queryId = parkingLotId;
+    if (typeof parkingLotId === 'string' && /^[a-fA-F0-9]{24}$/.test(parkingLotId)) {
+      queryId = new ObjectId(parkingLotId);
+    }
+    const parkingLot = await this.findById(queryId);
 
     if (!parkingLot) {
       throw new Error("Tempat parkir tidak ditemukan");
@@ -86,7 +98,7 @@ export class ParkingLot {
     ).toFixed(1);
 
     const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: new ObjectId(parkingLotId) },
+      { _id: queryId },
       { 
         $set: { 
           rating: parseFloat(newAvgRating),
@@ -101,9 +113,13 @@ export class ParkingLot {
 
   static async findByOwner(ownerId) {
     const db = getDB();
+    let queryId = ownerId;
+    if (typeof ownerId === 'string' && /^[a-fA-F0-9]{24}$/.test(ownerId)) {
+      queryId = new ObjectId(ownerId);
+    }
     return await db.collection(this.collection)
       .find({ 
-        ownerId: new ObjectId(ownerId),
+        ownerId: queryId,
         status: "active"
       })
       .toArray();
@@ -111,8 +127,12 @@ export class ParkingLot {
 
   static async update(parkingLotId, updateData) {
     const db = getDB();
+    let queryId = parkingLotId;
+    if (typeof parkingLotId === 'string' && /^[a-fA-F0-9]{24}$/.test(parkingLotId)) {
+      queryId = new ObjectId(parkingLotId);
+    }
     const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: new ObjectId(parkingLotId) },
+      { _id: queryId },
       { 
         $set: {
           ...updateData,
@@ -126,9 +146,12 @@ export class ParkingLot {
 
   static async delete(parkingLotId) {
     const db = getDB();
-    // Soft delete dengan mengubah status menjadi inactive
+    let queryId = parkingLotId;
+    if (typeof parkingLotId === 'string' && /^[a-fA-F0-9]{24}$/.test(parkingLotId)) {
+      queryId = new ObjectId(parkingLotId);
+    }
     const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: new ObjectId(parkingLotId) },
+      { _id: queryId },
       { 
         $set: { 
           status: "inactive",
