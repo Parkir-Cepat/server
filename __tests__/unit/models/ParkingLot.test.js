@@ -97,7 +97,7 @@ describe('ParkingLot Model', () => {
       const vehicleType = 'car';
       const change = -1;
       const updatedLot = { _id: new ObjectId(parkingLotId), available: { car: 9, motorcycle: 20 } };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedLot });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedLot);
       const result = await ParkingLot.updateAvailability(parkingLotId, vehicleType, change);
       const updateQuery = {};
       updateQuery['available.' + vehicleType] = change;
@@ -116,7 +116,7 @@ describe('ParkingLot Model', () => {
       const mockLot = { _id: new ObjectId(parkingLotId), rating: 4.0, reviewCount: 2 };
       mockCollection.findOne.mockResolvedValue(mockLot);
       const updatedLot = { ...mockLot, rating: 4.3, reviewCount: 3 };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedLot });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedLot);
       const result = await ParkingLot.updateRating(parkingLotId, 5);
       expect(result).toEqual(updatedLot);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalled();
@@ -145,7 +145,7 @@ describe('ParkingLot Model', () => {
       const parkingLotId = '507f1f77bcf86cd799439011';
       const updateData = { name: 'Lot Updated', price: 6000 };
       const updatedLot = { _id: new ObjectId(parkingLotId), name: 'Lot Updated', price: 6000 };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedLot });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedLot);
       const result = await ParkingLot.update(parkingLotId, updateData);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: new ObjectId(parkingLotId) },
@@ -160,7 +160,7 @@ describe('ParkingLot Model', () => {
     it('should soft delete parking lot', async () => {
       const parkingLotId = '507f1f77bcf86cd799439011';
       const deletedLot = { _id: new ObjectId(parkingLotId), status: 'inactive' };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: deletedLot });
+      mockCollection.findOneAndUpdate.mockResolvedValue(deletedLot);
       const result = await ParkingLot.delete(parkingLotId);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: new ObjectId(parkingLotId) },

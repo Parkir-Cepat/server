@@ -77,7 +77,7 @@ describe('Parking Model', () => {
       const mockParking = { _id: new ObjectId(parkingId), availableSlots: 5, totalSlots: 10 };
       mockCollection.findOne.mockResolvedValue(mockParking);
       const updatedParking = { ...mockParking, availableSlots: 6 };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedParking });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedParking);
       const result = await Parking.updateAvailability(parkingId, 1);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: new ObjectId(parkingId) },

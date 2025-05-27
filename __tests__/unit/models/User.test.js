@@ -163,13 +163,12 @@ describe('User Model', () => {
     });
   });
 
-  describe('update', () => {
-    it('should update user without password', async () => {
+  describe('update', () => {    it('should update user without password', async () => {
       const userId = '507f1f77bcf86cd799439011';
       const updates = { name: 'Updated Name' };
       const updatedUser = { _id: userId, name: 'Updated Name' };
       
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedUser });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedUser);
       
       const result = await User.update(userId, updates);
       
@@ -184,10 +183,9 @@ describe('User Model', () => {
     it('should update user with password hashing', async () => {
       const userId = '507f1f77bcf86cd799439011';
       const updates = { password: 'newpassword' };
-      
-      bcrypt.genSalt.mockResolvedValue('salt');
+        bcrypt.genSalt.mockResolvedValue('salt');
       bcrypt.hash.mockResolvedValue('hashedpassword');
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: {} });
+      mockCollection.findOneAndUpdate.mockResolvedValue({});
       
       await User.update(userId, updates);
       
@@ -201,13 +199,12 @@ describe('User Model', () => {
     });
   });
 
-  describe('updateSaldo', () => {
-    it('should update user saldo', async () => {
+  describe('updateSaldo', () => {    it('should update user saldo', async () => {
       const userId = '507f1f77bcf86cd799439011';
       const amount = 50000;
       const updatedUser = { _id: userId, saldo: 150000 };
       
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedUser });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedUser);
       
       const result = await User.updateSaldo(userId, amount);
       
@@ -226,7 +223,7 @@ describe('User Model', () => {
       const userId = '507f1f77bcf86cd799439011';
       const amount = -25000;
       
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: {} });
+      mockCollection.findOneAndUpdate.mockResolvedValue({});
       
       await User.updateSaldo(userId, amount);
       
@@ -246,7 +243,7 @@ describe('User Model', () => {
       const userId = '507f1f77bcf86cd799439011';
       const updatedUser = { _id: userId, lastLogin: new Date() };
       
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedUser });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedUser);
       
       const result = await User.updateLastLogin(userId);
       

@@ -90,16 +90,16 @@ export const parkingLotResolvers = {
       });
 
       const parkingLot = await ParkingLot.findById(id);
-      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");
-      // Debug log
+      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");      // Debug log
       console.log('[DEBUG] updateParkingLot:', {
         parkingLotOwnerId: parkingLot.ownerId,
         parkingLotOwnerIdType: typeof parkingLot.ownerId,
         userId: user._id,
         userIdType: typeof user._id,
-        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString()
+        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString(),
+        userIdToString: user._id && user._id.toString()
       });
-      if (parkingLot.ownerId.toString() !== user._id && user.role !== "admin") {
+      if (parkingLot.ownerId.toString() !== user._id.toString() && user.role !== "admin") {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });
@@ -114,16 +114,16 @@ export const parkingLotResolvers = {
       });
 
       const parkingLot = await ParkingLot.findById(id);
-      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");
-      // Debug log
+      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");      // Debug log
       console.log('[DEBUG] deleteParkingLot:', {
         parkingLotOwnerId: parkingLot.ownerId,
         parkingLotOwnerIdType: typeof parkingLot.ownerId,
         userId: user._id,
         userIdType: typeof user._id,
-        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString()
+        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString(),
+        userIdToString: user._id && user._id.toString()
       });
-      if (parkingLot.ownerId.toString() !== user._id && user.role !== "admin") {
+      if (parkingLot.ownerId.toString() !== user._id.toString() && user.role !== "admin") {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });
@@ -139,16 +139,16 @@ export const parkingLotResolvers = {
       });
 
       const parkingLot = await ParkingLot.findById(id);
-      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");
-      // Debug log
+      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");      // Debug log
       console.log('[DEBUG] addParkingLotImage:', {
         parkingLotOwnerId: parkingLot.ownerId,
         parkingLotOwnerIdType: typeof parkingLot.ownerId,
         userId: user._id,
         userIdType: typeof user._id,
-        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString()
+        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString(),
+        userIdToString: user._id && user._id.toString()
       });
-      if (parkingLot.ownerId.toString() !== user._id && user.role !== "admin") {
+      if (parkingLot.ownerId.toString() !== user._id.toString() && user.role !== "admin") {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });
@@ -165,16 +165,16 @@ export const parkingLotResolvers = {
       });
 
       const parkingLot = await ParkingLot.findById(id);
-      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");
-      // Debug log
+      if (!parkingLot) throw new Error("Tempat parkir tidak ditemukan");      // Debug log
       console.log('[DEBUG] removeParkingLotImage:', {
         parkingLotOwnerId: parkingLot.ownerId,
         parkingLotOwnerIdType: typeof parkingLot.ownerId,
         userId: user._id,
         userIdType: typeof user._id,
-        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString()
+        ownerIdToString: parkingLot.ownerId && parkingLot.ownerId.toString(),
+        userIdToString: user._id && user._id.toString()
       });
-      if (parkingLot.ownerId.toString() !== user._id && user.role !== "admin") {
+      if (parkingLot.ownerId.toString() !== user._id.toString() && user.role !== "admin") {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });

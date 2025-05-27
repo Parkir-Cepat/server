@@ -104,7 +104,7 @@ describe('SaldoTransaction Model', () => {
       const id = 'trxid123';
       const status = 'success';
       const updatedTrx = { _id: id, status };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedTrx });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedTrx);
       const result = await SaldoTransaction.updateStatus(id, status);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: id },
@@ -120,7 +120,7 @@ describe('SaldoTransaction Model', () => {
       const transactionId = 'trx-001';
       const status = 'failed';
       const updatedTrx = { transactionId, status };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedTrx });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedTrx);
       const result = await SaldoTransaction.updateStatusByTransactionId(transactionId, status);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { transactionId },

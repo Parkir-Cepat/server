@@ -77,7 +77,7 @@ export class ParkingLot {
       },
       { returnDocument: "after" }
     );
-    return result.value;
+    return result;
   }
 
   static async updateRating(parkingLotId, newRating) {
@@ -95,9 +95,7 @@ export class ParkingLot {
     const newAvgRating = (
       (parkingLot.rating * parkingLot.reviewCount + newRating) / 
       (parkingLot.reviewCount + 1)
-    ).toFixed(1);
-
-    const result = await db.collection(this.collection).findOneAndUpdate(
+    ).toFixed(1);    const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: queryId },
       { 
         $set: { 
@@ -108,7 +106,7 @@ export class ParkingLot {
       },
       { returnDocument: "after" }
     );
-    return result.value;
+    return result;
   }
 
   static async findByOwner(ownerId) {
@@ -130,8 +128,7 @@ export class ParkingLot {
     let queryId = parkingLotId;
     if (typeof parkingLotId === 'string' && /^[a-fA-F0-9]{24}$/.test(parkingLotId)) {
       queryId = new ObjectId(parkingLotId);
-    }
-    const result = await db.collection(this.collection).findOneAndUpdate(
+    }    const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: queryId },
       { 
         $set: {
@@ -141,7 +138,7 @@ export class ParkingLot {
       },
       { returnDocument: "after" }
     );
-    return result.value;
+    return result;
   }
 
   static async delete(parkingLotId) {
@@ -157,10 +154,9 @@ export class ParkingLot {
           status: "inactive",
           updatedAt: new Date()
         }
-      },
-      { returnDocument: "after" }
+      },      { returnDocument: "after" }
     );
-    return result.value;
+    return result;
   }
 
   static async setupIndexes() {

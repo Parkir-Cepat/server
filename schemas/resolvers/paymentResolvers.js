@@ -28,10 +28,8 @@ export const paymentResolvers = {
       });
 
       const payment = await Payment.findById(id);
-      if (!payment) throw new Error("Pembayaran tidak ditemukan");
-
-      const booking = await Booking.findById(payment.bookingId);
-      if (booking.userId.toString() !== user._id) {
+      if (!payment) throw new Error("Pembayaran tidak ditemukan");      const booking = await Booking.findById(payment.bookingId);
+      if (booking.userId.toString() !== user._id.toString()) {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });
@@ -43,12 +41,10 @@ export const paymentResolvers = {
     getBookingPayment: async (_, { bookingId }, { user }) => {
       if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
         extensions: { code: 'UNAUTHENTICATED' }
-      });
-
-      const booking = await Booking.findById(bookingId);
+      });      const booking = await Booking.findById(bookingId);
       if (!booking) throw new Error("Booking tidak ditemukan");
 
-      if (booking.userId.toString() !== user._id) {
+      if (booking.userId.toString() !== user._id.toString()) {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });
@@ -87,7 +83,7 @@ export const paymentResolvers = {
       const booking = await Booking.findById(bookingId);
       if (!booking) throw new Error("Booking tidak ditemukan");
 
-      if (booking.userId.toString() !== user._id) {
+      if (booking.userId.toString() !== user._id.toString()) {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });

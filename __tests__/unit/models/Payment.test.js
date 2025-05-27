@@ -138,7 +138,7 @@ describe('Payment Model', () => {
       const id = 'payid123';
       const status = 'success';
       const updatedPayment = { _id: id, status };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedPayment });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedPayment);
       const result = await Payment.updateStatus(id, status);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: id },
@@ -154,7 +154,7 @@ describe('Payment Model', () => {
       const transactionId = 'trx-001';
       const status = 'failed';
       const updatedPayment = { transactionId, status };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedPayment });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedPayment);
       const result = await Payment.updateStatusByTransactionId(transactionId, status);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { transactionId },

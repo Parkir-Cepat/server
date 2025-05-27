@@ -34,7 +34,7 @@ describe('Booking Model', () => {
     mockDb = {
       collection: jest.fn((name) => {
         if (name === 'bookings') return mockCollection;
-        if (name === 'parkings') return mockParkingCollection;
+        if (name === 'parking_lots') return mockParkingCollection;
         return mockCollection;
       })
     };
@@ -164,7 +164,7 @@ describe('Booking Model', () => {
       const newStatus = 'confirmed';
       const updatedBooking = { _id: new ObjectId(bookingId), status: newStatus };
 
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedBooking });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedBooking);
 
       const result = await Booking.updateStatus(bookingId, newStatus);
 
@@ -232,7 +232,7 @@ describe('Booking Model', () => {
       const additionalCost = 5000;
       const extendedBooking = { _id: new ObjectId(bookingId), duration: 3, cost: 15000 };
 
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: extendedBooking });
+      mockCollection.findOneAndUpdate.mockResolvedValue(extendedBooking);
 
       const result = await Booking.extend(bookingId, additionalDuration, additionalCost);
 
@@ -296,7 +296,7 @@ describe('Booking Model', () => {
       
       mockCollection.findOne.mockResolvedValue(mockBooking);
       generateBookingQR.mockResolvedValue(mockQRCode);
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedBooking });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedBooking);
 
       const result = await Booking.generateQRCode(bookingId);
 
@@ -435,7 +435,7 @@ describe('Booking Model', () => {
       const cancelledBooking = { ...mockBooking, status: 'cancelled' };
 
       mockCollection.findOne.mockResolvedValue(mockBooking);
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: cancelledBooking });
+      mockCollection.findOneAndUpdate.mockResolvedValue(cancelledBooking);
       mockParkingCollection.updateOne.mockResolvedValue({});
 
       const result = await Booking.cancel(bookingId);
@@ -502,7 +502,7 @@ describe('Booking Model', () => {
         status: 'confirmed' 
       };
 
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: confirmedBooking });
+      mockCollection.findOneAndUpdate.mockResolvedValue(confirmedBooking);
 
       const result = await Booking.confirm(bookingId);
 

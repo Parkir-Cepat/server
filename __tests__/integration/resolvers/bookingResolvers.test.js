@@ -93,10 +93,9 @@ describe('Booking Resolvers Integration Tests', () => {
     it('should create a new booking', async () => {
       const user = await createTestUser(db);
       const parkingLot = await createTestParkingLot(db, { ownerId: user._id });
-      const token = generateTestToken(user._id.toString());
-      const createBookingMutation = `
+      const token = generateTestToken(user._id.toString());      const createBookingMutation = `
         mutation CreateBooking($input: CreateBookingInput!) {
-          createBooking(input: $input) { _id parkingLotId status }
+          createBooking(input: $input) { _id userId parkingLotId status }
         }
       `;
       const input = {

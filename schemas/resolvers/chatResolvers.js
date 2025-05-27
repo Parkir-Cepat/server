@@ -36,12 +36,10 @@ export const chatResolvers = {
       });
 
       const booking = await Booking.findById(bookingId);
-      if (!booking) throw new Error("Booking tidak ditemukan");
-
-      // Validasi akses
-      if (booking.userId.toString() !== user._id) {
+      if (!booking) throw new Error("Booking tidak ditemukan");      // Validasi akses
+      if (booking.userId.toString() !== user._id.toString()) {
         const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-        if (parkingLot.ownerId.toString() !== user._id) {
+        if (parkingLot.ownerId.toString() !== user._id.toString()) {
           throw new GraphQLError("Anda tidak memiliki akses", {
             extensions: { code: 'FORBIDDEN' }
           });
@@ -83,12 +81,10 @@ export const chatResolvers = {
       // Validasi booking jika ada
       if (bookingId) {
         const booking = await Booking.findById(bookingId);
-        if (!booking) throw new Error("Booking tidak ditemukan");
-
-        // Validasi akses ke booking
-        if (booking.userId.toString() !== user._id) {
+        if (!booking) throw new Error("Booking tidak ditemukan");        // Validasi akses ke booking
+        if (booking.userId.toString() !== user._id.toString()) {
           const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-          if (parkingLot.ownerId.toString() !== user._id) {
+          if (parkingLot.ownerId.toString() !== user._id.toString()) {
             throw new GraphQLError("Anda tidak memiliki akses ke booking ini", {
               extensions: { code: 'FORBIDDEN' }
             });
@@ -119,10 +115,8 @@ export const chatResolvers = {
       });
 
       const chat = await Chat.findById(messageId);
-      if (!chat) throw new Error("Pesan tidak ditemukan");
-
-      // Validasi penerima pesan
-      if (chat.receiverId.toString() !== user._id) {
+      if (!chat) throw new Error("Pesan tidak ditemukan");      // Validasi penerima pesan
+      if (chat.receiverId.toString() !== user._id.toString()) {
         throw new GraphQLError("Anda tidak memiliki akses", {
           extensions: { code: 'FORBIDDEN' }
         });

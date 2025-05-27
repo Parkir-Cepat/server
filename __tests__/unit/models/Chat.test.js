@@ -79,7 +79,7 @@ describe('Chat Model', () => {
     it('should mark a message as read', async () => {
       const messageId = '507f1f77bcf86cd799439011';
       const updatedChat = { _id: new ObjectId(messageId), read: true };
-      mockCollection.findOneAndUpdate.mockResolvedValue({ value: updatedChat });
+      mockCollection.findOneAndUpdate.mockResolvedValue(updatedChat);
       const result = await Chat.markAsRead(messageId);
       expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: new ObjectId(messageId) },

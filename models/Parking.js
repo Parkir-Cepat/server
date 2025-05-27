@@ -52,14 +52,12 @@ export class Parking {
     const newAvailable = parking.availableSlots + change;
     if (newAvailable < 0 || newAvailable > parking.totalSlots) {
       throw new Error("Slot parkir tidak valid");
-    }
-
-    const result = await db.collection(this.collection).findOneAndUpdate(
+    }    const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: new ObjectId(parkingId) },
       { $inc: { availableSlots: change } },
       { returnDocument: "after" }
     );
-    return result.value;
+    return result;
   }
 
   static async findByOwner(ownerId) {
