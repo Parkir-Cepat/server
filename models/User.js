@@ -89,11 +89,27 @@ export class User {
       isEmailVerified = false
     } = userData;
 
-    // Hash password jika bukan dari Google Auth
-    let hashedPassword = password;
-    if (!password.startsWith('GOOGLE_AUTH_')) {
+    // Hash password jika ada dan bukan dari Google Auth
+    let hashedPassword = null;
+    if (password) {
+      if (!password.startsWith('GOOGLE_AUTH_')) {
+        const salt = await bcrypt.genSalt(10);
+        hashedPassword = await bcrypt.hash(password, salt);
+      } else {
+        hashedPassword = password;
+      }
+    }
+
+    // Generate random password for Google Auth users if no password provided
+    if (!hashedPassword && googleId) {
+      const randomPassword = 'GOOGLE_AUTH_' + Math.random().toString(36).substring(7);
       const salt = await bcrypt.genSalt(10);
-      hashedPassword = await bcrypt.hash(password, salt);
+      hashedPassword = await bcrypt.hash(randomPassword, salt);
+    }
+
+    // Throw error if no password and not Google Auth
+    if (!hashedPassword && !googleId) {
+      throw new Error('Password is required for non-Google Auth users');
     }
 
     const result = await db.collection(this.collection).insertOne({
@@ -116,6 +132,9 @@ export class User {
       name,
       role,
       saldo: 0,
+      googleId,
+      avatar,
+      isEmailVerified,
       createdAt: new Date(),
     };
   }

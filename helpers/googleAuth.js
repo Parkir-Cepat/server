@@ -2,6 +2,13 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { User } from '../models/User.js';
 import { generateToken } from './jwt.js';
+import { OAuth2Client } from 'google-auth-library';
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+
+if (!GOOGLE_CLIENT_ID) {
+  console.error('GOOGLE_CLIENT_ID is not defined in environment variables');
+}
 
 // Konfigurasi Passport untuk Google OAuth
 passport.use(
@@ -68,5 +75,34 @@ export const generateGoogleAuthToken = (user) => {
     role: user.role
   });
 };
+
+const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+export async function verifyGoogleToken(token) {
+  try {
+    if (!GOOGLE_CLIENT_ID) {
+      throw new Error('GOOGLE_CLIENT_ID is not configured');
+    }
+
+    if (!token) {
+      throw new Error('Token is required');
+    }
+
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: GOOGLE_CLIENT_ID
+    });
+
+    const payload = ticket.getPayload();
+    if (!payload) {
+      throw new Error('Failed to get payload from Google token');
+    }
+
+    return payload;
+  } catch (error) {
+    console.error('Error verifying Google token:', error);
+    throw error; // Re-throw error to be handled by resolver
+  }
+}
 
 export default passport; 

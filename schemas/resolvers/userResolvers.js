@@ -1,6 +1,7 @@
 import { User } from "../../models/User.js";
 import { GraphQLError } from "graphql";
 import { generateToken } from "../../helpers/jwt.js";
+import { verifyGoogleToken } from "../../helpers/googleAuth.js";
 
 function validateEmail(email) {
   const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -142,6 +143,74 @@ export const userResolvers = {
       // Update password
       await User.update(user._id, { password: newPassword });
       return true;
+    },
+
+    googleAuth: async (_, { token }) => {
+      try {
+        if (!token) {
+          throw new GraphQLError("Token Google diperlukan", {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+
+        // Verify Google token
+        const payload = await verifyGoogleToken(token);
+
+        const { email, name, picture: avatar } = payload;
+        if (!email) {
+          throw new GraphQLError("Email tidak ditemukan dalam token Google", {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+
+        // Find or create user
+        let user = await User.findByEmail(email);
+        if (!user) {
+          user = await User.create({
+            email,
+            name,
+            avatar,
+            googleId: payload.sub,
+            role: "user",
+            isEmailVerified: true
+          });
+        } else {
+          // Update user info if needed
+          await User.update(user._id, {
+            name,
+            avatar,
+            googleId: payload.sub,
+            isEmailVerified: true
+          });
+        }
+
+        // Generate token
+        const authToken = generateToken(user);
+
+        return {
+          token: authToken,
+          user
+        };
+      } catch (error) {
+        console.error("Google Auth Error:", error);
+        
+        // Handle specific error cases
+        if (error.message.includes("GOOGLE_CLIENT_ID")) {
+          throw new GraphQLError("Konfigurasi Google Auth tidak valid", {
+            extensions: { code: "INTERNAL_SERVER_ERROR" },
+          });
+        }
+
+        if (error.message.includes("Token is required")) {
+          throw new GraphQLError("Token Google diperlukan", {
+            extensions: { code: "BAD_USER_INPUT" },
+          });
+        }
+
+        throw new GraphQLError(error.message || "Gagal melakukan autentikasi Google", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
     },
   },
 
