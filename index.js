@@ -143,21 +143,93 @@ const startServer = async () => {
     // Webhook endpoint untuk notifikasi Midtrans
     app.post('/midtrans-webhook', async (req, res) => {
       try {
+        console.log('🔔 Webhook Midtrans received:', JSON.stringify(req.body, null, 2));
+        
         const notification = req.body;
-        const { orderId, status, transactionId } = await verifyNotification(notification);
+        const { orderId, status } = await verifyNotification(notification);
+        
+        console.log(`📋 Processing order: ${orderId}, status: ${status}`);
 
         // Update status pembayaran berdasarkan tipe order
         if (orderId.startsWith('ORD-')) {
           // Update status pembayaran booking
-          await Payment.updateStatus(transactionId, status);
+          console.log('💳 Updating booking payment status...');
+          await Payment.updateStatusByTransactionId(orderId, status);
         } else if (orderId.startsWith('TOP-')) {
-          // Update status top up saldo
-          await SaldoTransaction.updateStatus(transactionId, status);
+          console.log('💰 Processing top-up transaction...');
+          
+          // Ambil transaksi saldo sebelum update
+          const trx = await SaldoTransaction.findByTransactionId(orderId);
+          console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
+          
+          if (trx) {
+            // Update status transaksi
+            const updated = await SaldoTransaction.updateStatusByTransactionId(orderId, status);
+            console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
+            
+            // Jika status success, update saldo user
+            if (status === 'success' && trx.status !== 'success') {
+              console.log(`💵 Adding ${trx.amount} to user ${trx.userId} balance...`);
+              const { User } = await import('./models/User.js');
+              const userUpdate = await User.updateSaldo(trx.userId, trx.amount);
+              console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
+            } else {
+              console.log(`⚠️ Skipping saldo update. Status: ${status}, Previous status: ${trx.status}`);
+            }
+          } else {
+            console.log('❌ Transaction not found for orderId:', orderId);
+          }
         }
 
+        console.log('✅ Webhook processed successfully');
         res.status(200).json({ status: 'success' });
       } catch (error) {
-        console.error('Error handling Midtrans webhook:', error);
+        console.error('❌ Error handling Midtrans webhook:', error);
+        res.status(500).json({ status: 'error', message: error.message });
+      }
+    });
+
+    // Endpoint untuk testing webhook secara manual
+    app.post('/test-webhook', async (req, res) => {
+      try {
+        const { orderId } = req.body;
+        console.log('🧪 Testing webhook for orderId:', orderId);
+        
+        // Simulasi payload webhook Midtrans
+        const mockNotification = {
+          order_id: orderId,
+          transaction_status: 'settlement',
+          payment_type: 'gopay',
+          transaction_id: 'test-' + Date.now()
+        };
+        
+        // Panggil logika webhook yang sama
+        const { orderId: processedOrderId, status } = { orderId: mockNotification.order_id, status: 'success' };
+        
+        if (processedOrderId.startsWith('TOP-')) {
+          const trx = await SaldoTransaction.findByTransactionId(processedOrderId);
+          console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
+          
+          if (trx) {
+            const updated = await SaldoTransaction.updateStatusByTransactionId(processedOrderId, status);
+            console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
+            
+            if (status === 'success' && trx.status !== 'success') {
+              console.log(`💵 Adding ${trx.amount} to user ${trx.userId} balance...`);
+              const { User } = await import('./models/User.js');
+              const userUpdate = await User.updateSaldo(trx.userId, trx.amount);
+              console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
+            }
+          }
+        }
+        
+        res.status(200).json({ 
+          status: 'success', 
+          message: 'Test webhook completed',
+          orderId: processedOrderId 
+        });
+      } catch (error) {
+        console.error('❌ Error in test webhook:', error);
         res.status(500).json({ status: 'error', message: error.message });
       }
     });

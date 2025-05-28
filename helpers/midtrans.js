@@ -34,7 +34,11 @@ export const createTransaction = async ({
       customer_details: {
         first_name: customerName,
         email: customerEmail
-      }
+      },
+      callbacks: {
+        finish: process.env.MIDTRANS_FINISH_URL || 'http://localhost:5173/topup-success'
+      },
+      notification_url: process.env.MIDTRANS_WEBHOOK_URL || 'http://localhost:4000/midtrans-webhook'
     };
 
     const transaction = await snap.createTransaction(parameter);

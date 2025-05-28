@@ -6,6 +6,7 @@ export const userTypes = `#graphql
     role: String!
     saldo: Float!
     createdAt: String!
+    updatedAt: String!
     googleId: String
     avatar: String
     isEmailVerified: Boolean
