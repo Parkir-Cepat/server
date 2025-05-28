@@ -1,26 +1,27 @@
 export const bookingTypes = `#graphql
   type Booking {
     _id: ID!
-    userId: ID!
+    user_id: ID!
     user: User
-    parkingLotId: ID!
-    parkingLot: ParkingLot
-    vehicleType: String!
-    startTime: String!
+    parking_id: ID!
+    parking: Parking
+    vehicle_type: String!
+    start_time: String!
     duration: Int!
     cost: Float!
     status: String!
-    createdAt: String!
-    payment: Payment
-    qrCode: String
-    entryQR: String
-    exitQR: String
+    created_at: String!
+    updated_at: String!
+    payment: Transaction
+    qr_code: String
+    entry_qr: String
+    exit_qr: String
   }
 
   input CreateBookingInput {
-    parkingLotId: ID!
-    vehicleType: String!
-    startTime: String!
+    parking_id: ID!
+    vehicle_type: String!
+    start_time: String!
     duration: Int!
   }
 
@@ -28,7 +29,7 @@ export const bookingTypes = `#graphql
     getBooking(id: ID!): Booking!
     getMyActiveBookings: [Booking!]!
     getMyBookingHistory: [Booking!]!
-    getParkingLotBookings(parkingLotId: ID!): [Booking!]!
+    getParkingBookings(parking_id: ID!): [Booking!]!
   }
 
   type Mutation {
@@ -46,8 +47,7 @@ export const bookingTypes = `#graphql
     booking: Booking
     message: String!
   }
-
   type Subscription {
-    bookingStatusChanged(parkingLotId: ID!): Booking!
+    bookingStatusChanged(parking_id: ID!): Booking!
   }
-`; 
+`;

@@ -1,46 +1,47 @@
 export const chatTypes = `#graphql
   type Chat {
     _id: ID!
-    senderId: ID!
-    sender: User
-    receiverId: ID!
-    receiver: User
-    bookingId: ID
-    booking: Booking
+    sender_id: ID!
+    sender: User!
+    room_id: ID!
+    room: Room!
     message: String!
-    read: Boolean!
-    createdAt: String!
-  }
-
-  type ChatParticipant {
-    _id: ID!
-    name: String!
-    lastMessage: String
-    lastMessageTime: String
-    unreadCount: Int!
+    message_type: String!
+    read_by: [ID!]!
+    created_at: String!
+    updated_at: String!
   }
 
   input SendMessageInput {
-    receiverId: ID!
+    room_id: ID!
     message: String!
-    bookingId: ID
+    message_type: String
   }
 
+  type MessageStatus {
+    message_id: ID!
+    read_by: [ID!]!
+    delivered_to: [ID!]!
+  }
   type Query {
-    getChatHistory(userId: ID!, limit: Int): [Chat!]!
-    getBookingChats(bookingId: ID!): [Chat!]!
-    getChatParticipants: [ChatParticipant!]!
-    getUnreadMessages: [Chat!]!
+    getRoomMessages(room_id: ID!, limit: Int, offset: Int): [Chat!]!
+    getUnreadMessages(room_id: ID): [Chat!]!
+    getMessageStatus(message_id: ID!): MessageStatus!
+    getMyRecentChats: [Chat!]!
   }
 
   type Mutation {
     sendMessage(input: SendMessageInput!): Chat!
-    markMessageAsRead(messageId: ID!): Chat!
-    markAllMessagesAsRead(senderId: ID!): Boolean!
+    markMessageAsRead(message_id: ID!): Chat!
+    markRoomMessagesAsRead(room_id: ID!): Boolean!
+    deleteMessage(message_id: ID!): Boolean!
+    editMessage(message_id: ID!, new_message: String!): Chat!
   }
 
   type Subscription {
-    messageReceived(userId: ID!): Chat!
-    messageRead(userId: ID!): Chat!
+    messageReceived(room_id: ID!): Chat!
+    messageRead(room_id: ID!): Chat!
+    messageDeleted(room_id: ID!): ID!
+    messageEdited(room_id: ID!): Chat!
   }
-`; 
+`;

@@ -1,7 +1,7 @@
 import { Chat } from "../../models/Chat.js";
+import { Room } from "../../models/Room.js";
+import { UserRoom } from "../../models/UserRoom.js";
 import { User } from "../../models/User.js";
-import { Booking } from "../../models/Booking.js";
-import { ParkingLot } from "../../models/ParkingLot.js";
 import { GraphQLError } from "graphql";
 import { PubSub } from "graphql-subscriptions";
 
@@ -10,61 +10,35 @@ const pubsub = new PubSub();
 export const chatResolvers = {
   Chat: {
     sender: async (chat) => {
-      return await User.findById(chat.senderId);
+      return await User.findById(chat.user_id || chat.sender_id);
     },
-    receiver: async (chat) => {
-      return await User.findById(chat.receiverId);
-    },
-    booking: async (chat) => {
-      if (!chat.bookingId) return null;
-      return await Booking.findById(chat.bookingId);
+    room: async (chat) => {
+      return await Room.findById(chat.room_id);
     }
-  },
-
-  Query: {
-    getChatHistory: async (_, { userId, limit }, { user }) => {
+  },  Query: {
+    getRoomMessages: async (_, { room_id, limit, offset }, { user }) => {
       if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
         extensions: { code: 'UNAUTHENTICATED' }
       });
 
-      return await Chat.getHistory(user._id, userId, limit);
-    },
-
-    getBookingChats: async (_, { bookingId }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
-
-      const booking = await Booking.findById(bookingId);
-      if (!booking) throw new Error("Booking tidak ditemukan");      // Validasi akses
-      if (booking.userId.toString() !== user._id.toString()) {
-        const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-        if (parkingLot.ownerId.toString() !== user._id.toString()) {
-          throw new GraphQLError("Anda tidak memiliki akses", {
-            extensions: { code: 'FORBIDDEN' }
-          });
-        }
+      // Pastikan user adalah member room
+      const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
+      if (!userRoom) {
+        throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
+          extensions: { code: 'FORBIDDEN' }
+        });
       }
 
-      return await Chat.getByBooking(bookingId);
+      return await Chat.getRoomChats(room_id, limit);
     },
 
-    getChatParticipants: async (_, __, { user }) => {
+    getMyRecentChats: async (_, __, { user }) => {
       if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
         extensions: { code: 'UNAUTHENTICATED' }
       });
 
-      return await Chat.getParticipants(user._id);
-    },
-
-    getUnreadMessages: async (_, __, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
-
-      return await Chat.getUnread(user._id);
-    }
-  },
+      return await Chat.getRecentChats(user._id);
+    }  },
 
   Mutation: {
     sendMessage: async (_, { input }, { user }) => {
@@ -72,86 +46,57 @@ export const chatResolvers = {
         extensions: { code: 'UNAUTHENTICATED' }
       });
 
-      const { receiverId, message, bookingId } = input;
+      const { room_id, message } = input;
 
-      // Validasi receiver
-      const receiver = await User.findById(receiverId);
-      if (!receiver) throw new Error("Penerima pesan tidak ditemukan");
+      // Validasi room
+      const room = await Room.findById(room_id);
+      if (!room) throw new Error("Room tidak ditemukan");
 
-      // Validasi booking jika ada
-      if (bookingId) {
-        const booking = await Booking.findById(bookingId);
-        if (!booking) throw new Error("Booking tidak ditemukan");        // Validasi akses ke booking
-        if (booking.userId.toString() !== user._id.toString()) {
-          const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-          if (parkingLot.ownerId.toString() !== user._id.toString()) {
-            throw new GraphQLError("Anda tidak memiliki akses ke booking ini", {
-              extensions: { code: 'FORBIDDEN' }
-            });
-          }
-        }
-      }
-
-      // Buat pesan
-      const chat = await Chat.create({
-        senderId: user._id,
-        receiverId,
-        bookingId,
-        message,
-        read: false
-      });
-
-      // Publish event untuk subscription
-      pubsub.publish("MESSAGE_RECEIVED", {
-        messageReceived: chat
-      });
-
-      return chat;
-    },
-
-    markMessageAsRead: async (_, { messageId }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
-
-      const chat = await Chat.findById(messageId);
-      if (!chat) throw new Error("Pesan tidak ditemukan");      // Validasi penerima pesan
-      if (chat.receiverId.toString() !== user._id.toString()) {
-        throw new GraphQLError("Anda tidak memiliki akses", {
+      // Pastikan user adalah member room
+      const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
+      if (!userRoom) {
+        throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
           extensions: { code: 'FORBIDDEN' }
         });
       }
 
-      const updatedChat = await Chat.markAsRead(messageId);
-
-      // Publish event untuk subscription
-      pubsub.publish("MESSAGE_READ", {
-        messageRead: updatedChat
+      // Buat pesan
+      const chat = await Chat.create({
+        user_id: user._id,
+        room_id,
+        message
       });
 
-      return updatedChat;
+      // Publish event untuk subscription
+      pubsub.publish("MESSAGE_RECEIVED", {
+        messageReceived: chat,
+        roomId: room_id
+      });      return chat;
     },
 
-    markAllMessagesAsRead: async (_, { senderId }, { user }) => {
+    markRoomMessagesAsRead: async (_, { room_id }, { user }) => {
       if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
         extensions: { code: 'UNAUTHENTICATED' }
       });
 
-      await Chat.markAllAsRead(senderId, user._id);
+      // Pastikan user adalah member room
+      const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
+      if (!userRoom) {
+        throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
+          extensions: { code: 'FORBIDDEN' }
+        });
+      }
+
+      await Chat.markRoomAsRead(room_id, user._id);
       return true;
     }
   },
 
   Subscription: {
     messageReceived: {
-      subscribe: (_, { userId }) => {
+      subscribe: (_, { room_id }) => {
         return pubsub.asyncIterator(["MESSAGE_RECEIVED"]);
-      }
-    },
-    messageRead: {
-      subscribe: (_, { userId }) => {
-        return pubsub.asyncIterator(["MESSAGE_READ"]);
       }
     }
   }
-}; 
+};

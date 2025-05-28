@@ -1,13 +1,13 @@
 export const notificationTypes = `#graphql
   type Notification {
     _id: ID!
-    userId: ID!
+    user_id: ID!
     type: String!
     title: String!
     message: String!
     data: JSON
-    isRead: Boolean!
-    createdAt: String!
+    is_read: Boolean!
+    created_at: String!
   }
 
   type Query {

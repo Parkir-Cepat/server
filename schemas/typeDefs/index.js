@@ -1,17 +1,19 @@
 import { userTypes } from './userTypes.js';
-import { parkingLotTypes } from './parkingLotTypes.js';
+import { parkingTypes } from './parkingTypes.js';
 import { bookingTypes } from './bookingTypes.js';
-import { paymentTypes } from './paymentTypes.js';
+import { transactionTypes } from './transactionTypes.js';
+import { roomTypes } from './roomTypes.js';
 import { chatTypes } from './chatTypes.js';
 import { notificationTypes } from './notificationTypes.js';
 
 const typeDefs = `#graphql
   ${userTypes}
-  ${parkingLotTypes}
+  ${parkingTypes}
   ${bookingTypes}
-  ${paymentTypes}
+  ${transactionTypes}
+  ${roomTypes}
   ${chatTypes}
   ${notificationTypes}
 `;
 
-export default typeDefs; 
+export default typeDefs;

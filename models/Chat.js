@@ -4,9 +4,21 @@ import { getDB } from "../config/db.js";
 export class Chat {
   static collection = "chats";
 
-  static async findById(id) {
+  /**
+   * Setup indexes untuk collection
+   */
+  static async setupIndexes() {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
+    await Promise.all([
+      // Compound index untuk chat history antar users
+      db.collection(this.collection).createIndex({ 
+        user_id: 1, 
+        room_id: 1,
+        createdAt: 1 
+      }),
+      db.collection(this.collection).createIndex({ room_id: 1 }),
+      db.collection(this.collection).createIndex({ createdAt: 1 })
+    ]);
   }
 
   static async sendMessage(senderId, receiverId, message, bookingId = null) {
@@ -261,4 +273,71 @@ export class Chat {
       { $set: { read: true } }
     );
   }
-} 
+
+  /**
+   * Mencari chat berdasarkan ID
+   * @param {string} id - ID chat
+   * @returns {Promise<Object>} Chat document
+   */
+  static async findById(id) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
+  }
+
+  /**
+   * Mengirim pesan dalam room
+   * @param {Object} chatData - Data chat
+   * @returns {Promise<Object>} Chat document yang baru dibuat
+   */
+  static async sendMessage(chatData) {
+    const db = getDB();
+
+    // Validasi user dan room exist
+    const [user, room] = await Promise.all([
+      db.collection("users").findOne({ _id: new ObjectId(chatData.user_id) }),
+      db.collection("rooms").findOne({ _id: new ObjectId(chatData.room_id) })
+    ]);
+
+    if (!user || !room) {
+      throw new Error("User atau room tidak ditemukan");
+    }
+
+    const chat = {
+      room_id: new ObjectId(chatData.room_id),
+      user_id: new ObjectId(chatData.user_id),
+      message: chatData.message,
+      createdAt: new Date()
+    };
+
+    const result = await db.collection(this.collection).insertOne(chat);
+    return { _id: result.insertedId, ...chat };
+  }
+
+  /**
+   * Mendapatkan riwayat chat dalam room
+   * @param {string} roomId - ID room
+   * @param {number} limit - Limit pesan
+   * @returns {Promise<Array>} Array of chat documents
+   */
+  static async getRoomChats(roomId, limit = 50) {
+    const db = getDB();
+    return await db.collection(this.collection)
+      .find({ room_id: new ObjectId(roomId) })
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .toArray();
+  }
+
+  /**
+   * Mendapatkan chat berdasarkan user
+   * @param {string} userId - ID user
+   * @returns {Promise<Array>} Array of chat documents
+   */
+  static async getUserChats(userId) {
+    const db = getDB();
+    return await db.collection(this.collection)
+      .find({ user_id: new ObjectId(userId) })
+      .sort({ createdAt: -1 })
+      .toArray();
+  }
+}

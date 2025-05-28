@@ -12,8 +12,8 @@ let client = null;
 export const connectDB = async () => {
   try {
     client = await MongoClient.connect(process.env.MONGODB_URI);
-    db = client.db();
-    console.log('🗄️  Terhubung ke MongoDB');
+    db = client.db('PARKIRIN'); // Set database name to PARKIRIN
+    console.log('🗄️  Terhubung ke MongoDB database: PARKIRIN');
 
     // Setup indexes untuk semua collection
     await setupIndexes();
@@ -48,22 +48,22 @@ const setupIndexes = async () => {
   try {
     // Import model classes
     const { User } = await import('../models/User.js');
-    const { ParkingLot } = await import('../models/ParkingLot.js');
+    const { Parking } = await import('../models/Parking.js');
     const { Booking } = await import('../models/Booking.js');
-    const { Payment } = await import('../models/Payment.js');
-    const { SaldoTransaction } = await import('../models/SaldoTransaction.js');
+    const { Transaction } = await import('../models/Transaction.js');
     const { Chat } = await import('../models/Chat.js');
-    const { Notification } = await import('../models/Notification.js');
+    const { Room } = await import('../models/Room.js');
+    const { UserRoom } = await import('../models/UserRoom.js');
 
     // Setup indexes untuk setiap collection
     await Promise.all([
       User.setupIndexes(),
-      ParkingLot.setupIndexes(),
+      Parking.setupIndexes(),
       Booking.setupIndexes(),
-      Payment.setupIndexes(),
-      SaldoTransaction.setupIndexes(),
+      Transaction.setupIndexes(),
       Chat.setupIndexes(),
-      Notification.setupIndexes()
+      Room.setupIndexes(),
+      UserRoom.setupIndexes()
     ]);
 
     console.log('📑 Indexes berhasil dibuat');

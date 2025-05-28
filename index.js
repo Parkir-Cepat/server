@@ -13,8 +13,7 @@ import { authContext } from './helpers/jwt.js';
 import typeDefs from './schemas/typeDefs/index.js';
 import resolvers from './schemas/resolvers/index.js';
 import { verifyNotification } from './helpers/midtrans.js';
-import { Payment } from './models/Payment.js';
-import { SaldoTransaction } from './models/SaldoTransaction.js';
+import { Transaction } from './models/Transaction.js';
 import session from 'express-session';
 import passport from './helpers/googleAuth.js';
 
@@ -148,37 +147,27 @@ const startServer = async () => {
         const notification = req.body;
         const { orderId, status } = await verifyNotification(notification);
         
-        console.log(`📋 Processing order: ${orderId}, status: ${status}`);
-
-        // Update status pembayaran berdasarkan tipe order
-        if (orderId.startsWith('ORD-')) {
-          // Update status pembayaran booking
-          console.log('💳 Updating booking payment status...');
-          await Payment.updateStatusByTransactionId(orderId, status);
-        } else if (orderId.startsWith('TOP-')) {
-          console.log('💰 Processing top-up transaction...');
+        console.log(`📋 Processing order: ${orderId}, status: ${status}`);        // Proses semua transaksi dengan Transaction model
+        console.log('💳 Processing transaction...');
+        const trx = await Transaction.findByTransactionId(orderId);
+        console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
+        
+        if (trx) {
+          // Update status transaksi
+          const updated = await Transaction.updateStatus(trx._id, status);
+          console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
           
-          // Ambil transaksi saldo sebelum update
-          const trx = await SaldoTransaction.findByTransactionId(orderId);
-          console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
-          
-          if (trx) {
-            // Update status transaksi
-            const updated = await SaldoTransaction.updateStatusByTransactionId(orderId, status);
-            console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
-            
-            // Jika status success, update saldo user
-            if (status === 'success' && trx.status !== 'success') {
-              console.log(`💵 Adding ${trx.amount} to user ${trx.userId} balance...`);
-              const { User } = await import('./models/User.js');
-              const userUpdate = await User.updateSaldo(trx.userId, trx.amount);
-              console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
-            } else {
-              console.log(`⚠️ Skipping saldo update. Status: ${status}, Previous status: ${trx.status}`);
-            }
+          // Jika status success dan transaksi adalah top-up, update saldo user
+          if (status === 'success' && trx.status !== 'success' && trx.type === 'top_up') {
+            console.log(`💵 Adding ${trx.amount} to user ${trx.user_id} balance...`);
+            const { User } = await import('./models/User.js');
+            const userUpdate = await User.updateSaldo(trx.user_id, trx.amount);
+            console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
           } else {
-            console.log('❌ Transaction not found for orderId:', orderId);
+            console.log(`ℹ️ No saldo update needed. Type: ${trx.type}, Status: ${status}`);
           }
+        } else {
+          console.log('❌ Transaction not found for orderId:', orderId);
         }
 
         console.log('✅ Webhook processed successfully');
@@ -204,22 +193,19 @@ const startServer = async () => {
         };
         
         // Panggil logika webhook yang sama
-        const { orderId: processedOrderId, status } = { orderId: mockNotification.order_id, status: 'success' };
+        const { orderId: processedOrderId, status } = { orderId: mockNotification.order_id, status: 'success' };        // Process transaction
+        const trx = await Transaction.findByTransactionId(processedOrderId);
+        console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
         
-        if (processedOrderId.startsWith('TOP-')) {
-          const trx = await SaldoTransaction.findByTransactionId(processedOrderId);
-          console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
+        if (trx) {
+          const updated = await Transaction.updateStatus(trx._id, status);
+          console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
           
-          if (trx) {
-            const updated = await SaldoTransaction.updateStatusByTransactionId(processedOrderId, status);
-            console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
-            
-            if (status === 'success' && trx.status !== 'success') {
-              console.log(`💵 Adding ${trx.amount} to user ${trx.userId} balance...`);
-              const { User } = await import('./models/User.js');
-              const userUpdate = await User.updateSaldo(trx.userId, trx.amount);
-              console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
-            }
+          if (status === 'success' && trx.status !== 'success' && trx.type === 'top_up') {
+            console.log(`💵 Adding ${trx.amount} to user ${trx.user_id} balance...`);
+            const { User } = await import('./models/User.js');
+            const userUpdate = await User.updateSaldo(trx.user_id, trx.amount);
+            console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
           }
         }
         
@@ -235,7 +221,7 @@ const startServer = async () => {
     });
 
     // Start HTTP server
-    const PORT = process.env.PORT || 4000;
+    const PORT = process.env.PORT || 3000;
     httpServer.listen(PORT, () => {
       console.log(`
 🚀 Server siap di http://localhost:${PORT}/graphql

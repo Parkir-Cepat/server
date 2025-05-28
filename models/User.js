@@ -14,8 +14,8 @@ export class User {
     await Promise.all([
       db.collection(this.collection).createIndex({ email: 1 }, { unique: true }),
       db.collection(this.collection).createIndex({ role: 1 }),
-      db.collection(this.collection).createIndex({ createdAt: 1 }),
-      db.collection(this.collection).createIndex({ googleId: 1 })
+      db.collection(this.collection).createIndex({ created_at: 1 }),
+      db.collection(this.collection).createIndex({ google_id: 1 })
     ]);
   }
 
@@ -118,12 +118,10 @@ export class User {
       name,
       role,
       saldo: 0,
-      googleId,
+      google_id: googleId,
       avatar,
-      isEmailVerified,
-      lastLogin: new Date(),
-      createdAt: new Date(),
-      updatedAt: new Date()
+      created_at: new Date(),
+      updated_at: new Date()
     });
 
     return {
@@ -132,10 +130,9 @@ export class User {
       name,
       role,
       saldo: 0,
-      googleId,
+      google_id: googleId,
       avatar,
-      isEmailVerified,
-      createdAt: new Date(),
+      created_at: new Date(),
     };
   }
 
@@ -149,7 +146,7 @@ export class User {
     const db = getDB();
     const updateData = {
       ...updates,
-      updatedAt: new Date()
+      updated_at: new Date()
     };
 
     // Jika ada update password, hash dulu
@@ -176,7 +173,7 @@ export class User {
       { _id: id },
       { 
         $inc: { saldo: amount },
-        $set: { updatedAt: new Date() }
+        $set: { updated_at: new Date() }
       },
       { returnDocument: 'after' }
     );

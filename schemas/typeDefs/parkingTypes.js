@@ -1,4 +1,4 @@
-export const parkingLotTypes = `#graphql
+export const parkingTypes = `#graphql
   type Location {
     type: String!
     coordinates: [Float!]!
@@ -24,24 +24,24 @@ export const parkingLotTypes = `#graphql
     close: String!
   }
 
-  type ParkingLot {
+  type Parking {
     _id: ID!
     name: String!
     address: String!
     location: Location!
-    ownerId: ID!
+    owner_id: ID!
     owner: User
     capacity: Capacity!
     available: Available!
     rates: Rates!
-    operationalHours: OperationalHours!
+    operational_hours: OperationalHours!
     facilities: [String!]!
     images: [String!]!
     status: String!
     rating: Float!
-    reviewCount: Int!
-    createdAt: String!
-    updatedAt: String!
+    review_count: Int!
+    created_at: String!
+    updated_at: String!
   }
 
   input LocationInput {
@@ -63,49 +63,49 @@ export const parkingLotTypes = `#graphql
     close: String!
   }
 
-  input CreateParkingLotInput {
+  input CreateParkingInput {
     name: String!
     address: String!
     location: LocationInput!
     capacity: CapacityInput!
     rates: RatesInput!
-    operationalHours: OperationalHoursInput!
+    operational_hours: OperationalHoursInput!
     facilities: [String!]!
     images: [String!]!
   }
 
-  input UpdateParkingLotInput {
+  input UpdateParkingInput {
     name: String
     address: String
     rates: RatesInput
-    operationalHours: OperationalHoursInput
+    operational_hours: OperationalHoursInput
     facilities: [String!]
     images: [String!]
     status: String
   }
 
   type Query {
-    getParkingLot(id: ID!): ParkingLot!
-    getNearbyParkingLots(
+    getParking(id: ID!): Parking!
+    getNearbyParkings(
       longitude: Float!
       latitude: Float!
       maxDistance: Float
       vehicleType: String
-    ): [ParkingLot!]!
-    getMyParkingLots: [ParkingLot!]!
-    searchParkingLots(
+    ): [Parking!]!
+    getMyParkings: [Parking!]!
+    searchParkings(
       query: String!
       vehicleType: String
       sortBy: String
-    ): [ParkingLot!]!
+    ): [Parking!]!
   }
-
   type Mutation {
-    createParkingLot(input: CreateParkingLotInput!): ParkingLot!
-    updateParkingLot(id: ID!, input: UpdateParkingLotInput!): ParkingLot!
-    deleteParkingLot(id: ID!): Boolean!
-    addParkingLotImage(id: ID!, imageUrl: String!): ParkingLot!
-    removeParkingLotImage(id: ID!, imageUrl: String!): ParkingLot!
-    updateParkingLotRating(id: ID!, rating: Float!): ParkingLot!
+    createParking(input: CreateParkingInput!): Parking!
+    updateParking(id: ID!, input: UpdateParkingInput!): Parking!
+    deleteParking(id: ID!): Boolean!
+    addParkingImage(id: ID!, imageUrl: String!): Parking!
+    removeParkingImage(id: ID!, imageUrl: String!): Parking!
+    updateParkingRating(id: ID!, rating: Float!): Parking!
+    updateParkingAvailability(id: ID!, available_slots: Int!): Parking!
   }
-`; 
+`;

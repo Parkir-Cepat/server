@@ -1,6 +1,6 @@
 import { ObjectId } from 'mongodb';
 import { Booking } from '../../models/Booking.js';
-import { ParkingLot } from '../../models/ParkingLot.js';
+import { Parking } from '../../models/Parking.js';
 import { User } from '../../models/User.js';
 import { ensureAuth } from '../../helpers/jwt.js';
 import { publish, subscribe, EVENTS } from '../../helpers/pubsub.js';
@@ -27,22 +27,22 @@ export const bookingResolvers = {
       return await Booking.getBookingHistory(user._id);
     },
 
-    // Mendapatkan booking untuk parking lot tertentu
-    getParkingLotBookings: async (_, { parkingLotId }, { user }) => {
+    // Mendapatkan booking untuk parking tertentu
+    getParkingBookings: async (_, { parking_id }, { user }) => {
       ensureAuth(user);
       
-      const parkingLot = await ParkingLot.findById(parkingLotId);
-      if (!parkingLot) throw new Error('Parking lot tidak ditemukan');
+      const parking = await Parking.findById(parking_id);
+      if (!parking) throw new Error('Parking tidak ditemukan');
       
-      // Hanya owner yang bisa melihat booking parking lotnya
-      if (parkingLot.ownerId.toString() !== user._id) {
+      // Hanya owner yang bisa melihat booking parkingnya
+      if (parking.owner_id.toString() !== user._id) {
         throw new Error('Anda tidak memiliki akses');
       }
       
       const db = getDB();
       return await db.collection('bookings')
-        .find({ parkingLotId: new ObjectId(parkingLotId) })
-        .sort({ startTime: -1 })
+        .find({ parking_id: new ObjectId(parking_id) })
+        .sort({ created_at: -1 })
         .toArray();
     }
   },
@@ -54,7 +54,7 @@ export const bookingResolvers = {
 
       const booking = await Booking.create({
         ...input,
-        userId: user._id
+        user_id: user._id
       });
 
       // Publish event untuk subscription
@@ -73,16 +73,16 @@ export const bookingResolvers = {
       const booking = await Booking.findById(id);
       if (!booking) throw new Error('Booking tidak ditemukan');
       
-      if (booking.userId.toString() !== user._id.toString()) {
+      if (booking.user_id.toString() !== user._id.toString()) {
         throw new Error('Anda tidak memiliki akses');
       }
 
-      const updatedBooking = await Booking.cancel(id);
+      const updatedBooking = await Booking.updateStatus(id, 'cancelled');
 
       // Publish event untuk subscription
       await publish(EVENTS.BOOKING.UPDATED, {
         bookingUpdated: updatedBooking,
-        userId: booking.userId
+        userId: booking.user_id
       });
 
       return updatedBooking;
@@ -100,7 +100,7 @@ export const bookingResolvers = {
       // Publish event untuk subscription
       await publish(EVENTS.BOOKING.UPDATED, {
         bookingUpdated: updatedBooking,
-        userId: booking.userId
+        userId: booking.user_id
       });
 
       return updatedBooking;
@@ -114,29 +114,31 @@ export const bookingResolvers = {
       if (!booking) throw new Error('Booking tidak ditemukan');
 
       // Hitung biaya tambahan
-      const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-      const additionalCost = parkingLot.tariff * additionalDuration;
+      const parking = await Parking.findById(booking.parking_id);
+      const additionalCost = parking.tariff * additionalDuration;
 
       const updatedBooking = await Booking.extend(id, additionalDuration, additionalCost);
 
       // Publish event untuk subscription
       await publish(EVENTS.BOOKING.UPDATED, {
         bookingUpdated: updatedBooking,
-        userId: booking.userId
+        userId: booking.user_id
       });
 
       return updatedBooking;
-    },    // Generate QR Code untuk booking
+    },
+
+    // Generate QR Code untuk booking
     generateBookingQR: async (_, { bookingId }, { user }) => {
       ensureAuth(user);
 
       const booking = await Booking.findById(bookingId);
       if (!booking) throw new Error('Booking tidak ditemukan');
 
-      // Pastikan user yang buat booking atau owner parking lot
-      const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-      if (booking.userId.toString() !== user._id.toString() && 
-          parkingLot.ownerId.toString() !== user._id.toString()) {
+      // Pastikan user yang buat booking atau owner parking
+      const parking = await Parking.findById(booking.parking_id);
+      if (booking.user_id.toString() !== user._id.toString() && 
+          parking.owner_id.toString() !== user._id.toString()) {
         throw new Error('Anda tidak memiliki akses');
       }
 
@@ -187,10 +189,12 @@ export const bookingResolvers = {
       ensureAuth(user);
 
       const booking = await Booking.findById(bookingId);
-      if (!booking) throw new Error('Booking tidak ditemukan');      // Pastikan user yang buat booking atau owner parking lot
-      const parkingLot = await ParkingLot.findById(booking.parkingLotId);
-      if (booking.userId.toString() !== user._id.toString() && 
-          parkingLot.ownerId.toString() !== user._id.toString()) {
+      if (!booking) throw new Error('Booking tidak ditemukan');
+
+      // Pastikan user yang buat booking atau owner parking
+      const parking = await Parking.findById(booking.parking_id);
+      if (booking.user_id.toString() !== user._id.toString() && 
+          parking.owner_id.toString() !== user._id.toString()) {
         throw new Error('Anda tidak memiliki akses');
       }
 
@@ -205,7 +209,7 @@ export const bookingResolvers = {
   Subscription: {
     // Subscription untuk status booking berubah
     bookingStatusChanged: {
-      subscribe: (_, { parkingLotId }, { user }) => {
+      subscribe: (_, { parking_id }, { user }) => {
         ensureAuth(user);
         return subscribe(EVENTS.BOOKING.UPDATED);
       }
@@ -215,12 +219,12 @@ export const bookingResolvers = {
   Booking: {
     // Resolve user yang membuat booking
     user: async (booking) => {
-      return await User.findById(booking.userId);
+      return await User.findById(booking.user_id);
     },
 
-    // Resolve parking lot yang dibooking
-    parkingLot: async (booking) => {
-      return await ParkingLot.findById(booking.parkingLotId);
+    // Resolve parking yang dibooking
+    parking: async (booking) => {
+      return await Parking.findById(booking.parking_id);
     }
   }
-}; 
+};

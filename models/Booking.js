@@ -5,52 +5,94 @@ import { generateBookingQR, generateParkingAccessQR } from "../helpers/qrcode.js
 export class Booking {
   static collection = "bookings";
 
+  /**
+   * Setup indexes untuk collection
+   */
+  static async setupIndexes() {
+    const db = getDB();
+    await Promise.all([
+      db.collection(this.collection).createIndex({ user_id: 1 }),
+      db.collection(this.collection).createIndex({ parking_id: 1 }),
+      db.collection(this.collection).createIndex({ status: 1 }),
+      db.collection(this.collection).createIndex({ start_time: 1 }),
+      db.collection(this.collection).createIndex({ created_at: 1 })
+    ]);
+  }
+
+  /**
+   * Mencari booking berdasarkan ID
+   * @param {string} id - ID booking
+   * @returns {Promise<Object>} Booking document
+   */
   static async findById(id) {
     const db = getDB();
     return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
   }
 
+  /**
+   * Membuat booking baru
+   * @param {Object} bookingData - Data booking
+   * @returns {Promise<Object>} Booking document yang baru dibuat
+   */
   static async create(bookingData) {
     const db = getDB();
     const {
-      userId,
-      parkingLotId,
-      vehicleType,
-      startTime,
-      duration
+      user_id,
+      parking_id,
+      booking_time,
+      start_time,
+      end_time,
+      price
     } = bookingData;    // Dapatkan detail parkir
-    const parking = await db.collection("parking_lots").findOne({ 
-      _id: new ObjectId(parkingLotId) 
+    const parking = await db.collection("parkings").findOne({ 
+      _id: new ObjectId(parking_id) 
     });
     
     if (!parking) {
       throw new Error("Tempat parkir tidak ditemukan");
     }
 
-    if (parking.availableSlots <= 0) {
+    // Check availability
+    if (!parking.available_slots || parking.available_slots <= 0) {
       throw new Error("Slot parkir tidak tersedia");
     }
 
-    // Hitung total biaya
-    const totalCost = parking.tariff * duration;
+    // Check for overlapping bookings (optional - for more sophisticated booking)
+    const overlappingBookings = await db.collection(this.collection).countDocuments({
+      parking_id: new ObjectId(parking_id),
+      status: { $in: ["pending", "confirmed"] },
+      $or: [
+        {
+          start_time: { $lte: new Date(start_time) },
+          end_time: { $gt: new Date(start_time) }
+        },
+        {
+          start_time: { $lt: new Date(end_time) },
+          end_time: { $gte: new Date(end_time) }
+        }
+      ]
+    });
 
-    // Buat booking
+    if (overlappingBookings >= parking.available_slots) {
+      throw new Error("Slot parkir tidak tersedia untuk waktu yang dipilih");
+    }
+
     const booking = {
-      userId: new ObjectId(userId),
-      parkingLotId: new ObjectId(parkingLotId),
-      vehicleType,
-      startTime: new Date(startTime),
-      duration,
-      cost: totalCost,
-      status: "pending",
-      createdAt: new Date(),
-      updatedAt: new Date()
+      user_id: new ObjectId(user_id),
+      parking_id: new ObjectId(parking_id),
+      booking_time: new Date(booking_time),
+      start_time: new Date(start_time),
+      end_time: new Date(end_time),
+      price,
+      status: 'pending',
+      created_at: new Date(),
+      updated_at: new Date()
     };
 
-    const result = await db.collection(this.collection).insertOne(booking);    // Update ketersediaan parkir
-    await db.collection("parking_lots").updateOne(
-      { _id: new ObjectId(parkingLotId) },
-      { $inc: { availableSlots: -1 } }
+    const result = await db.collection(this.collection).insertOne(booking);    // Update available slots
+    await db.collection("parkings").updateOne(
+      { _id: new ObjectId(parking_id) },
+      { $inc: { available_slots: -1 } }
     );
 
     return { _id: result.insertedId, ...booking };

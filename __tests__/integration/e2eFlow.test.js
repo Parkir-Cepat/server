@@ -32,7 +32,7 @@ describe('End-to-End Flow Test', () => {
         register(input: $input) { token user { _id email name role } }
       }
     `;
-    const userInput = { email: 'user1@example.com', password: 'password123', name: 'User 1', role: 'customer' };
+    const userInput = { email: 'user1@example.com', password: 'password123', name: 'User 1', role: 'user' };
     let response = await request(app)
       .post('/graphql')
       .send({ query: registerMutation, variables: { input: userInput } });
@@ -82,18 +82,16 @@ describe('End-to-End Flow Test', () => {
       .set('Authorization', `Bearer ${landownerToken}`)
       .send({ query: createParkingLotMutation, variables: { input: parkingLotInput } });
     expectGraphQLSuccess(response);
-    parkingLotId = response.body.data.createParkingLot._id;
-
-    // User create booking
+    parkingLotId = response.body.data.createParkingLot._id;    // User create booking
     const createBookingMutation = `
       mutation CreateBooking($input: CreateBookingInput!) {
-        createBooking(input: $input) { _id parkingLotId status }
+        createBooking(input: $input) { _id parking_id status }
       }
     `;
     const bookingInput = {
-      parkingLotId,
-      vehicleType: 'car',
-      startTime: new Date().toISOString(),
+      parking_id: parkingLotId,
+      vehicle_type: 'car',
+      start_time: new Date().toISOString(),
       duration: 2
     };
     response = await request(app)

@@ -1,67 +1,44 @@
-import { Notification } from '../../models/Notification.js';
-import { ensureAuth } from '../../helpers/jwt.js';
-import { subscribe, EVENTS } from '../../helpers/pubsub.js';
-import { GraphQLScalarType } from 'graphql';
-import { Kind } from 'graphql/language/index.js';
+import { GraphQLScalarType, Kind, GraphQLError } from 'graphql';
 
-// Custom scalar untuk JSON
+// Create JSON scalar type
 const JSONScalar = new GraphQLScalarType({
   name: 'JSON',
   description: 'JSON custom scalar type',
   serialize(value) {
-    return value;
+    if (typeof value === 'object' || Array.isArray(value)) {
+      return value;
+    }
+    throw new GraphQLError('JSON must be an object or array');
   },
   parseValue(value) {
-    return value;
+    if (typeof value === 'object' || Array.isArray(value)) {
+      return value;
+    }
+    throw new GraphQLError('JSON must be an object or array');
   },
   parseLiteral(ast) {
     if (ast.kind === Kind.OBJECT) {
       return ast.value;
     }
-    return null;
+    if (ast.kind === Kind.LIST) {
+      return ast.values.map(value => value.value);
+    }
+    throw new GraphQLError('JSON must be an object or array');
   }
 });
 
-export const notificationResolvers = {
+export default {
   JSON: JSONScalar,
 
   Query: {
-    // Mendapatkan notifikasi user
-    getMyNotifications: async (_, { limit }, { user }) => {
-      ensureAuth(user);
-      return await Notification.findByUserId(user._id, limit);
-    },
-
-    // Mendapatkan jumlah notifikasi yang belum dibaca
-    getUnreadNotificationCount: async (_, __, { user }) => {
-      ensureAuth(user);
-      return await Notification.getUnreadCount(user._id);
-    }
+    // Add your notification queries here
   },
 
   Mutation: {
-    // Tandai notifikasi sebagai sudah dibaca
-    markNotificationAsRead: async (_, { id }, { user }) => {
-      ensureAuth(user);
-      await Notification.markAsRead(id, user._id);
-      return true;
-    },
-
-    // Tandai semua notifikasi sebagai sudah dibaca
-    markAllNotificationsAsRead: async (_, __, { user }) => {
-      ensureAuth(user);
-      await Notification.markAllAsRead(user._id);
-      return true;
-    }
+    // Add your notification mutations here
   },
 
   Subscription: {
-    // Subscription untuk notifikasi baru
-    notificationReceived: {
-      subscribe: (_, __, { user }) => {
-        ensureAuth(user);
-        return subscribe(`${EVENTS.NOTIFICATION.NEW}_${user._id}`);
-      }
-    }
+    // Add your notification subscriptions here
   }
-}; 
+};

@@ -5,12 +5,12 @@ export const userTypes = `#graphql
     name: String!
     role: String!
     saldo: Float!
-    createdAt: String!
-    updatedAt: String!
-    googleId: String
+    created_at: String!
+    updated_at: String!
+    google_id: String
     avatar: String
-    isEmailVerified: Boolean
-    lastLogin: String
+    is_email_verified: Boolean
+    last_login: String
   }
 
   type AuthPayload {
