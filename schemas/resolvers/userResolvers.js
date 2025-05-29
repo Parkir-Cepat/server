@@ -32,21 +32,21 @@ export const userResolvers = {
       
       // Return mock data for now - can be enhanced later with real statistics
       return {
-        totalParkingLots: 0,
-        parkingLotsChange: 0,
-        monthlyEarnings: 0,
-        earningsChange: 0,
-        activeBookings: 0,
-        bookingsChange: 0,
-        totalUsers: 1,
-        usersChange: 0,
-        platformRevenue: 0,
-        revenueChange: 0,
-        pendingApprovals: 0,
-        totalBookings: 0,
-        totalSpent: 0,
-        spentChange: 0,
-        walletChange: 0
+        totalParkingLots: 5,
+        parkingLotsChange: 2,
+        monthlyEarnings: 1500000,
+        earningsChange: 150000,
+        activeBookings: 12,
+        bookingsChange: 3,
+        totalUsers: 150,
+        usersChange: 25,
+        platformRevenue: 750000,
+        revenueChange: 75000,
+        pendingApprovals: 3,
+        totalBookings: 45,
+        totalSpent: 300000,
+        spentChange: 50000,
+        walletChange: 25000
       };
     },
     getRecentActivity: async (_, { limit = 10 }, { user }) => {
