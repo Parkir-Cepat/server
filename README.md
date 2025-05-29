@@ -1,17 +1,8 @@
-Hi GitHub Copilot, bantu saya membuat aplikasi frontend "ParkirCepat" yang terintegrasi dengan backend GraphQL. Ini adalah aplikasi booking dan manajemen parkir dengan fitur real-time.
-
-TEKNOLOGI YANG HARUS DIGUNAKAN:
-- React dengan Next.js 14 (App Router)
-- Apollo Client untuk GraphQL
-- Tailwind CSS untuk UI
-- NextAuth.js untuk autentikasi
-- WebSockets untuk real-time features
-- Jest dan React Testing Library untuk testing
-- Zustand untuk state management
+Hi GitHub Copilot, bantu saya membuat aplikasi frontend "Parkirin" yang terintegrasi dengan backend GraphQL. Ini adalah aplikasi booking dan manajemen parkir dengan fitur real-time.
 
 BACKEND ENDPOINT:
-- GraphQL API: http://localhost:4000/graphql
-- WebSocket: ws://localhost:4000/graphql
+- GraphQL API: http://localhost:3000/graphql
+- WebSocket: ws://localhost:3000/graphql
 
 KEY FEATURES DAN PAGES YANG HARUS DIBUAT:
 
@@ -202,7 +193,7 @@ Aplikasi harus responsif untuk mobile (375px) hingga desktop (1440px)
 Implementasikan mobile-first approach
 TOLONG GENERATE:
 
-Struktur project Next.js dengan semua komponen dan pages yang diperlukan
+Struktur project React.js dengan semua komponen dan pages yang diperlukan
 Setup Apollo Client dengan autentikasi dan WebSocket
 Implementasi fitur utama berdasarkan spec di atas (mulai dari satu fitur terlebih dahulu)
 Contoh hooks dan components reusable untuk GraphQL operations

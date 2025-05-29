@@ -24,6 +24,52 @@ export const userResolvers = {
         });
       return await User.findById(userId);
     },
+    getDashboardStats: async (_, __, { user }) => {
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+      
+      // Return mock data for now - can be enhanced later with real statistics
+      return {
+        totalParkingLots: 0,
+        parkingLotsChange: 0,
+        monthlyEarnings: 0,
+        earningsChange: 0,
+        activeBookings: 0,
+        bookingsChange: 0,
+        totalUsers: 1,
+        usersChange: 0,
+        platformRevenue: 0,
+        revenueChange: 0,
+        pendingApprovals: 0,
+        totalBookings: 0,
+        totalSpent: 0,
+        spentChange: 0,
+        walletChange: 0
+      };
+    },
+    getRecentActivity: async (_, { limit = 10 }, { user }) => {
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+      
+      // Return mock data for now - can be enhanced later with real activity data
+      return [
+        {
+          id: "1",
+          type: "user_registered",
+          title: "Welcome to Parkirin!",
+          description: "Your account has been successfully created",
+          timestamp: new Date().toISOString(),
+          location: null,
+          bookingId: null,
+          parkingId: null,
+          chatId: null
+        }
+      ];
+    },
   },
 
   Mutation: {
