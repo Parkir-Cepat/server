@@ -69,6 +69,19 @@ export class Room {
     return result.deletedCount > 0;
   }
 
+  /**
+   * Find multiple rooms by their IDs
+   * @param {Array<string>} ids - Array of room IDs
+   * @returns {Promise<Array>} Array of room documents
+   */
+  static async findByIds(ids) {
+    const db = getDB();
+    const objectIds = ids.map(id => new ObjectId(id));
+    return await db.collection(this.collection)
+      .find({ _id: { $in: objectIds } })
+      .toArray();
+  }
+
   // Setup indexes
   static async setupIndexes() {
     const db = getDB();

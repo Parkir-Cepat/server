@@ -126,6 +126,18 @@ export class UserRoom {
   }
 
   /**
+   * Count the number of users in a room
+   * @param {string} roomId - ID room
+   * @returns {Promise<number>} Count of users in the room
+   */
+  static async countByRoom(roomId) {
+    const db = getDB();
+    return await db.collection(this.collection).countDocuments({
+      room_id: new ObjectId(roomId)
+    });
+  }
+
+  /**
    * Find a UserRoom by both user and room IDs
    * @param {string} userId - ID user
    * @param {string} roomId - ID room

@@ -4,8 +4,9 @@ import { User } from "../../models/User.js";
 import { GraphQLError } from "graphql";
 
 export const roomResolvers = {
-  Room: {    participants: async (room) => {
-      const userRooms = await UserRoom.findByRoom(room._id);
+  Room: {
+    participants: async (room) => {
+      const userRooms = await UserRoom.findByRoomId(room._id);
       const userIds = userRooms.map(ur => ur.user_id);
       return await User.findByIds(userIds);
     },
@@ -32,14 +33,12 @@ export const roomResolvers = {
       }
 
       return room;
-    },
-
-    getMyRooms: async (_, __, { user }) => {
+    },    getMyRooms: async (_, __, { user }) => {
       if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
         extensions: { code: 'UNAUTHENTICATED' }
       });
 
-      const userRooms = await UserRoom.findByUser(user._id);
+      const userRooms = await UserRoom.findByUserId(user._id);
       const roomIds = userRooms.map(ur => ur.room_id);
       return await Room.findByIds(roomIds);
     }

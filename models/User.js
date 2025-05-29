@@ -169,8 +169,9 @@ export class User {
    * @returns {Promise<Object>} Updated user document
    */
   static async updateSaldo(id, amount) {
-    const db = getDB();    const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: id },
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(id) },
       { 
         $inc: { saldo: amount },
         $set: { updated_at: new Date() }
