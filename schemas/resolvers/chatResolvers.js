@@ -4,6 +4,8 @@ import { UserRoom } from "../../models/UserRoom.js";
 import { User } from "../../models/User.js";
 import { GraphQLError } from "graphql";
 import { PubSub } from "graphql-subscriptions";
+import { AuthenticationError, ForbiddenError, UserInputError } from 'apollo-server-express';
+import { ObjectId } from 'mongodb';
 
 const pubsub = new PubSub();
 
@@ -16,20 +18,35 @@ export const chatResolvers = {
       return await Room.findById(chat.room_id);
     }
   },  Query: {
-    getRoomMessages: async (_, { room_id, limit, offset }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
-
-      // Pastikan user adalah member room
-      const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
-      if (!userRoom) {
-        throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
-          extensions: { code: 'FORBIDDEN' }
-        });
+    async getRoomMessages(parent, { room_id, limit = 50 }, { user }) {
+      if (!user) {
+        throw new AuthenticationError('You must be logged in to view messages');
       }
 
-      return await Chat.getRoomChats(room_id, limit);
+      // Validate room_id
+      if (!room_id) {
+        throw new UserInputError('Room ID is required');
+      }
+
+      // Validate ObjectId format
+      if (!ObjectId.isValid(room_id)) {
+        throw new UserInputError('Invalid room ID format');
+      }
+
+      try {
+        // Check if user has access to this room
+        const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
+        if (!userRoom) {
+          throw new ForbiddenError('You do not have access to this room');
+        }
+
+        // Get messages from the room
+        const messages = await Chat.getRoomChats(room_id, limit);
+        return messages;
+      } catch (error) {
+        console.error('Error getting room messages:', error);
+        throw error;
+      }
     },
 
     getMyRecentChats: async (_, __, { user }) => {

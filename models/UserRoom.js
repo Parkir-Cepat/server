@@ -125,6 +125,20 @@ export class UserRoom {
     return count > 0;
   }
 
+  /**
+   * Find a UserRoom by both user and room IDs
+   * @param {string} userId - ID user
+   * @param {string} roomId - ID room
+   * @returns {Promise<Object>} UserRoom document
+   */
+  static async findByUserAndRoom(userId, roomId) {
+    const db = getDB();
+    return await db.collection(this.collection).findOne({
+      user_id: new ObjectId(userId),
+      room_id: new ObjectId(roomId)
+    });
+  }
+
   // Setup indexes
   static async setupIndexes() {
     const db = getDB();

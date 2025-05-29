@@ -184,7 +184,9 @@ export const transactionResolvers = {
         amount,
         customerName: user.name,
         customerEmail: user.email
-      });      // Buat transaksi top up
+      });
+
+      // Buat transaksi top up
       const transaction = await Transaction.create({
         user_id: user._id,
         type: "top-up",
@@ -201,7 +203,12 @@ export const transactionResolvers = {
         transactionStatusChanged: transaction
       });
 
-      return transaction;
+      // Return PaymentResponse structure
+      return {
+        transaction,
+        payment_url: midtransResult.redirectUrl,
+        qr_code: midtransResult.qrCode || null
+      };
     },
     confirmPayment: async (_, { transaction_id }, { user }) => {
       if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
