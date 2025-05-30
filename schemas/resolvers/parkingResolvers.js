@@ -39,40 +39,57 @@ export const parkingResolvers = {
           extensions: { code: "FORBIDDEN" },
         });
       }
-      
+
       const parkings = await Parking.findByOwner(user._id);
-      
+
       // Filter out invalid parking data and ensure all required fields exist
-      return parkings.filter(parking => {
-        // Skip if missing required fields according to GraphQL schema
-        if (!parking.address || !parking.name) {
-          console.warn(`Skipping invalid parking ${parking._id}: missing required fields`);
-          return false;
-        }
-        
-        // Skip if has old structure
-        if (parking.total_slots || parking.available_slots || parking.tariff) {
-          console.warn(`Skipping old structure parking ${parking._id}: ${parking.name}`);
-          return false;
-        }
-        
-        // Skip if missing new structure
-        if (!parking.capacity || !parking.available || !parking.rates || !parking.operational_hours) {
-          console.warn(`Skipping incomplete parking ${parking._id}: ${parking.name}`);
-          return false;
-        }
-        
-        return true;
-      }).map(parking => ({
-        // Ensure all fields exist with defaults
-        ...parking,
-        facilities: parking.facilities || [],
-        images: parking.images || [],
-        status: parking.status || 'active',
-        rating: parking.rating || 0,
-        review_count: parking.review_count || 0,
-        updated_at: parking.updated_at || parking.created_at
-      }));
+      return parkings
+        .filter((parking) => {
+          // Skip if missing required fields according to GraphQL schema
+          if (!parking.address || !parking.name) {
+            console.warn(
+              `Skipping invalid parking ${parking._id}: missing required fields`
+            );
+            return false;
+          }
+
+          // Skip if has old structure
+          if (
+            parking.total_slots ||
+            parking.available_slots ||
+            parking.tariff
+          ) {
+            console.warn(
+              `Skipping old structure parking ${parking._id}: ${parking.name}`
+            );
+            return false;
+          }
+
+          // Skip if missing new structure
+          if (
+            !parking.capacity ||
+            !parking.available ||
+            !parking.rates ||
+            !parking.operational_hours
+          ) {
+            console.warn(
+              `Skipping incomplete parking ${parking._id}: ${parking.name}`
+            );
+            return false;
+          }
+
+          return true;
+        })
+        .map((parking) => ({
+          // Ensure all fields exist with defaults
+          ...parking,
+          facilities: parking.facilities || [],
+          images: parking.images || [],
+          status: parking.status || "active",
+          rating: parking.rating || 0,
+          review_count: parking.review_count || 0,
+          updated_at: parking.updated_at || parking.created_at,
+        }));
     },
 
     searchParkings: async (_, { query, limit }) => {
@@ -128,7 +145,14 @@ export const parkingResolvers = {
         });
       }
 
-      return await Parking.update(id, input);
+      const updated = await Parking.update(id, input);
+      if (!updated) {
+        throw new GraphQLError("Gagal memperbarui data parkir", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
+
+      return updated;
     },
 
     deleteParking: async (_, { id }, { user }) => {

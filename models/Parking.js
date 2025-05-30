@@ -184,17 +184,45 @@ export class Parking {
    */
   static async update(parkingId, updateData) {
     const db = getDB();
-    const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: new ObjectId(parkingId) },
-      {
-        $set: {
-          ...updateData,
-          updated_at: new Date(),
-        },
+
+    const existingParking = await db
+      .collection(this.collection)
+      .findOne({ _id: new ObjectId(parkingId) });
+
+    if (!existingParking) {
+      return null;
+    }
+
+    const updated = {
+      ...existingParking,
+      ...updateData,
+      available: {
+        motorcycle:
+          updateData.available?.motorcycle ??
+          existingParking.available?.motorcycle ??
+          0,
+        car: updateData.available?.car ?? existingParking.available?.car ?? 0,
+        ...((updateData.available || {}).otherFields || {}), // jika ada properti lain
       },
-      { returnDocument: "after" }
-    );
-    return result;
+      rates: {
+        ...existingParking.rates,
+        ...(updateData.rates || {}),
+      },
+      operational_hours: {
+        ...existingParking.operational_hours,
+        ...(updateData.operational_hours || {}),
+      },
+      updated_at: new Date(),
+    };
+
+    // Coba cek versi alternatif jika returnDocument tidak bekerja
+    await db
+      .collection(this.collection)
+      .updateOne({ _id: new ObjectId(parkingId) }, { $set: updated });
+
+    return await db
+      .collection(this.collection)
+      .findOne({ _id: new ObjectId(parkingId) });
   }
 
   /**
