@@ -29,7 +29,7 @@ export const userResolvers = {
         throw new GraphQLError("Anda harus login terlebih dahulu", {
           extensions: { code: "UNAUTHENTICATED" },
         });
-      
+
       // Return mock data for now - can be enhanced later with real statistics
       return {
         totalParkingLots: 5,
@@ -46,7 +46,7 @@ export const userResolvers = {
         totalBookings: 45,
         totalSpent: 300000,
         spentChange: 50000,
-        walletChange: 25000
+        walletChange: 25000,
       };
     },
     getRecentActivity: async (_, { limit = 10 }, { user }) => {
@@ -54,7 +54,7 @@ export const userResolvers = {
         throw new GraphQLError("Anda harus login terlebih dahulu", {
           extensions: { code: "UNAUTHENTICATED" },
         });
-      
+
       // Return mock data for now - can be enhanced later with real activity data
       return [
         {
@@ -66,8 +66,8 @@ export const userResolvers = {
           location: null,
           bookingId: null,
           parkingId: null,
-          chatId: null
-        }
+          chatId: null,
+        },
       ];
     },
   },
@@ -218,7 +218,7 @@ export const userResolvers = {
             avatar,
             googleId: payload.sub,
             role: "user",
-            isEmailVerified: true
+            isEmailVerified: true,
           });
         } else {
           // Update user info if needed
@@ -226,7 +226,7 @@ export const userResolvers = {
             name,
             avatar,
             googleId: payload.sub,
-            isEmailVerified: true
+            isEmailVerified: true,
           });
         }
 
@@ -235,11 +235,11 @@ export const userResolvers = {
 
         return {
           token: authToken,
-          user
+          user,
         };
       } catch (error) {
         console.error("Google Auth Error:", error);
-        
+
         // Handle specific error cases
         if (error.message.includes("GOOGLE_CLIENT_ID")) {
           throw new GraphQLError("Konfigurasi Google Auth tidak valid", {
@@ -253,9 +253,12 @@ export const userResolvers = {
           });
         }
 
-        throw new GraphQLError(error.message || "Gagal melakukan autentikasi Google", {
-          extensions: { code: "INTERNAL_SERVER_ERROR" },
-        });
+        throw new GraphQLError(
+          error.message || "Gagal melakukan autentikasi Google",
+          {
+            extensions: { code: "INTERNAL_SERVER_ERROR" },
+          }
+        );
       }
     },
   },

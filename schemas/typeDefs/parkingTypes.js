@@ -15,8 +15,8 @@ export const parkingTypes = `#graphql
   }
 
   type Rates {
-    car: Float!
-    motorcycle: Float!
+    car: Float
+    motorcycle: Float
   }
 
   type OperationalHours {
@@ -33,7 +33,7 @@ export const parkingTypes = `#graphql
     owner: User
     capacity: Capacity!
     available: Available!
-    rates: Rates!
+    rates: Rates
     operational_hours: OperationalHours!
     facilities: [String!]!
     images: [String!]!

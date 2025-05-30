@@ -17,7 +17,9 @@ export class Parking {
       // Index untuk sorting berdasarkan waktu pembuatan
       db.collection(this.collection).createIndex({ created_at: 1 }),
       // Index untuk pencarian berdasarkan nama
-      db.collection(this.collection).createIndex({ name: "text", description: "text" })
+      db
+        .collection(this.collection)
+        .createIndex({ name: "text", description: "text" }),
     ]);
   }
 
@@ -28,7 +30,17 @@ export class Parking {
    */
   static async findById(id) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
+    const parking = await db
+      .collection(this.collection)
+      .findOne({ _id: new ObjectId(id) });
+
+    if (parking) {
+      parking.available = {
+        car: parking.available?.car ?? 0, // fallback untuk car
+        motorcycle: parking.available?.motorcycle ?? 0, // fallback untuk motorcycle
+      };
+    }
+    return parking;
   }
 
   /**
@@ -43,32 +55,32 @@ export class Parking {
       address: parkingData.address,
       location: {
         type: "Point",
-        coordinates: parkingData.location.coordinates
+        coordinates: parkingData.location.coordinates,
       },
-      owner_id: new ObjectId(parkingData.owner_id),
       capacity: {
-        car: parkingData.capacity.car,
-        motorcycle: parkingData.capacity.motorcycle
+        car: parkingData.capacity?.car || 0,
+        motorcycle: parkingData.capacity?.motorcycle || 0,
       },
       available: {
-        car: parkingData.capacity.car, // Initially all slots are available
-        motorcycle: parkingData.capacity.motorcycle
+        car: parkingData.available?.car ?? 0,
+        bike: parkingData.available?.bike ?? 0,
       },
       rates: {
-        car: parkingData.rates.car,
-        motorcycle: parkingData.rates.motorcycle
+        car: parkingData.rates?.car || 0,
+        motorcycle: parkingData.rates?.motorcycle || 0,
       },
       operational_hours: {
-        open: parkingData.operational_hours.open,
-        close: parkingData.operational_hours.close
+        open: parkingData.operational_hours?.open,
+        close: parkingData.operational_hours?.close,
       },
       facilities: parkingData.facilities || [],
       images: parkingData.images || [],
-      status: 'active',
+      status: parkingData.status || "active",
       rating: 0,
       review_count: 0,
-      created_at: new Date(),
-      updated_at: new Date()
+      owner_id: new ObjectId(parkingData.owner_id),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     };
 
     const result = await db.collection(this.collection).insertOne(parking);
@@ -82,25 +94,28 @@ export class Parking {
    */
   static async findNearby({ longitude, latitude, maxDistance = 5000 }) {
     const db = getDB();
-    return await db.collection(this.collection).aggregate([
-      {
-        $geoNear: {
-          near: {
-            type: "Point",
-            coordinates: [longitude, latitude]
+    return await db
+      .collection(this.collection)
+      .aggregate([
+        {
+          $geoNear: {
+            near: {
+              type: "Point",
+              coordinates: [longitude, latitude],
+            },
+            distanceField: "distance",
+            maxDistance: maxDistance,
+            spherical: true,
           },
-          distanceField: "distance",
-          maxDistance: maxDistance,
-          spherical: true
-        }
-      },
-      {
-        $match: {
-          available_slots: { $gt: 0 }
-        }
-      },
-      { $limit: 20 }
-    ]).toArray();
+        },
+        {
+          $match: {
+            available_slots: { $gt: 0 },
+          },
+        },
+        { $limit: 20 },
+      ])
+      .toArray();
   }
 
   /**
@@ -113,8 +128,8 @@ export class Parking {
     const db = getDB();
     const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: new ObjectId(parkingId) },
-      { 
-        $inc: { available_slots: change }
+      {
+        $inc: { available_slots: change },
       },
       { returnDocument: "after" }
     );
@@ -128,10 +143,37 @@ export class Parking {
    */
   static async findByOwner(ownerId) {
     const db = getDB();
-    return await db.collection(this.collection)
-      .find({ owner_id: new ObjectId(ownerId) })
+    const results = await db
+      .collection(this.collection)
+      .find({
+        owner_id: new ObjectId(ownerId),
+        is_deleted: { $ne: true }, // Pastikan tidak mengambil yang sudah dihapus
+      })
       .sort({ created_at: -1 })
       .toArray();
+
+    // Tambahkan fallback agar tidak null
+    return results.map((parking) => ({
+      ...parking,
+      address: parking.address ?? "", // fallback untuk address
+      capacity: {
+        car: parking.capacity?.car ?? 0, // fallback untuk car
+        motorcycle: parking.capacity?.motorcycle ?? 0, // fallback untuk motorcycle
+      },
+      available: {
+        car: parking.available?.car ?? 0, // fallback untuk car
+        motorcycle: parking.available?.motorcycle ?? 0, // fallback untuk motorcycle
+      },
+      operational_hours: {
+        open: parking.operational_hours?.open ?? "00:00", // fallback untuk open
+        close: parking.operational_hours?.close ?? "23:59", // fallback untuk close
+      },
+      facilities: parking.facilities || [], // fallback untuk facilities
+      images: parking.images || [], // fallback untuk images
+      rating: parking.rating || 0, // fallback untuk rating
+      review_count: parking.review_count || 0, // fallback untuk review_count
+      status: parking.status || "active", // fallback untuk status
+    }));
   }
 
   /**
@@ -144,11 +186,11 @@ export class Parking {
     const db = getDB();
     const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: new ObjectId(parkingId) },
-      { 
+      {
         $set: {
           ...updateData,
-          updated_at: new Date()
-        }
+          updated_at: new Date(),
+        },
       },
       { returnDocument: "after" }
     );
@@ -164,11 +206,11 @@ export class Parking {
     const db = getDB();
     const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: new ObjectId(parkingId) },
-      { 
-        $set: { 
+      {
+        $set: {
           is_deleted: true,
-          deleted_at: new Date()
-        }
+          deleted_at: new Date(),
+        },
       },
       { returnDocument: "after" }
     );
@@ -194,7 +236,8 @@ export class Parking {
       if (filters.maxTariff) query.tariff.$lte = filters.maxTariff;
     }
 
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find(query)
       .sort({ created_at: -1 })
       .toArray();
