@@ -3,7 +3,6 @@ import { getDB } from "../config/db.js";
 
 export class Chat {
   static collection = "chats";
-
   /**
    * Setup indexes untuk collection
    */
@@ -14,10 +13,10 @@ export class Chat {
       db.collection(this.collection).createIndex({ 
         user_id: 1, 
         room_id: 1,
-        createdAt: 1 
+        created_at: 1 
       }),
       db.collection(this.collection).createIndex({ room_id: 1 }),
-      db.collection(this.collection).createIndex({ createdAt: 1 })
+      db.collection(this.collection).createIndex({ created_at: 1 })
     ]);
   }
 
@@ -32,15 +31,13 @@ export class Chat {
 
     if (!sender || !receiver) {
       throw new Error("Pengirim atau penerima tidak ditemukan");
-    }
-
-    const chat = {
+    }    const chat = {
       senderId: new ObjectId(senderId),
       receiverId: new ObjectId(receiverId),
       message,
       bookingId: bookingId ? new ObjectId(bookingId) : null,
       read: false,
-      createdAt: new Date()
+      created_at: new Date()
     };
 
     const result = await db.collection(this.collection).insertOne(chat);
@@ -55,7 +52,6 @@ export class Chat {
     );
     return result;
   }
-
   static async getChatHistory(userId1, userId2, limit = 50) {
     const db = getDB();
     return await db.collection(this.collection)
@@ -65,7 +61,7 @@ export class Chat {
           { senderId: new ObjectId(userId2), receiverId: new ObjectId(userId1) }
         ]
       })
-      .sort({ createdAt: -1 })
+      .sort({ created_at: -1 })
       .limit(limit)
       .toArray();
   }
@@ -160,16 +156,16 @@ export class Chat {
   static async createIndexes() {
     return await this.setupIndexes();
   }
-
   static async create(chatData) {
     const db = getDB();
     const chat = {
-      senderId: new ObjectId(chatData.senderId),
-      receiverId: new ObjectId(chatData.receiverId),
+      user_id: new ObjectId(chatData.user_id),
+      room_id: new ObjectId(chatData.room_id),
       message: chatData.message,
-      bookingId: chatData.bookingId ? new ObjectId(chatData.bookingId) : null,
-      read: chatData.read || false,
-      createdAt: new Date()
+      message_type: chatData.message_type || "text",
+      read_by: [],
+      created_at: new Date(),
+      updated_at: new Date()
     };
 
     const result = await db.collection(this.collection).insertOne(chat);
@@ -283,7 +279,6 @@ export class Chat {
     const db = getDB();
     return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
   }
-
   /**
    * Mengirim pesan dalam room
    * @param {Object} chatData - Data chat
@@ -306,13 +301,15 @@ export class Chat {
       room_id: new ObjectId(chatData.room_id),
       user_id: new ObjectId(chatData.user_id),
       message: chatData.message,
-      createdAt: new Date()
+      message_type: chatData.message_type || "text",
+      read_by: [],
+      created_at: new Date(),
+      updated_at: new Date()
     };
 
     const result = await db.collection(this.collection).insertOne(chat);
     return { _id: result.insertedId, ...chat };
   }
-
   /**
    * Mendapatkan riwayat chat dalam room
    * @param {string} roomId - ID room
@@ -323,7 +320,7 @@ export class Chat {
     const db = getDB();
     return await db.collection(this.collection)
       .find({ room_id: new ObjectId(roomId) })
-      .sort({ createdAt: -1 })
+      .sort({ created_at: -1 })
       .limit(limit)
       .toArray();
   }

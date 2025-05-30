@@ -11,13 +11,18 @@ const pubsub = new PubSub();
 
 export const chatResolvers = {
   Chat: {
+    sender_id: (chat) => chat.user_id,
     sender: async (chat) => {
       return await User.findById(chat.user_id || chat.sender_id);
     },
     room: async (chat) => {
       return await Room.findById(chat.room_id);
-    }
-  },  Query: {
+    },
+    created_at: (chat) => chat.created_at?.toISOString() || new Date().toISOString(),
+    updated_at: (chat) => chat.updated_at?.toISOString() || new Date().toISOString(),
+    message_type: (chat) => chat.message_type || "text",
+    read_by: (chat) => chat.read_by || []
+  },Query: {
     async getRoomMessages(parent, { room_id, limit = 50 }, { user }) {
       if (!user) {
         throw new AuthenticationError('You must be logged in to view messages');
