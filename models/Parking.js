@@ -275,4 +275,268 @@ export class Parking {
   static async createIndexes() {
     return await this.setupIndexes();
   }
+
+  /**
+   * Mendapatkan statistik untuk owner
+   * @param {string} ownerId - ID owner
+   * @returns {Promise<Object>} Owner statistics
+   */
+  static async getOwnerStats(ownerId) {
+    const db = getDB();
+
+    try {
+      // 1. Get user balance (current balance = total balance untuk sekarang)
+      const user = await db.collection("users").findOne({
+        _id: new ObjectId(ownerId),
+      });
+      const currentBalance = user?.saldo || 0;
+
+      // 2. Get all parkings for this owner
+      const parkings = await db
+        .collection(this.collection)
+        .find({
+          owner_id: new ObjectId(ownerId),
+          is_deleted: { $ne: true },
+        })
+        .toArray();
+
+      // 3. Calculate average rating
+      const ratingsSum = parkings.reduce(
+        (sum, parking) => sum + (parking.rating || 0),
+        0
+      );
+      const averageRating =
+        parkings.length > 0 ? ratingsSum / parkings.length : 0;
+
+      // 4. Get total income from bookings/transactions
+      const parkingIds = parkings.map((p) => p._id);
+
+      const incomeAggregation = await db
+        .collection("bookings")
+        .aggregate([
+          {
+            $match: {
+              parking_id: { $in: parkingIds },
+              status: { $in: ["completed", "paid"] }, // hanya yang sudah selesai/dibayar
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalIncome: { $sum: "$total_price" },
+              totalBookings: { $sum: 1 },
+            },
+          },
+        ])
+        .toArray();
+
+      const stats = incomeAggregation[0] || {
+        totalIncome: 0,
+        totalBookings: 0,
+      };
+
+      return {
+        totalBalance: currentBalance, // untuk sekarang sama dengan current balance
+        currentBalance: currentBalance,
+        totalIncome: stats.totalIncome || 0,
+        totalBookings: stats.totalBookings || 0,
+        averageRating: parseFloat(averageRating.toFixed(1)),
+      };
+    } catch (error) {
+      console.error("Error getting owner stats:", error);
+      throw new Error("Failed to get owner statistics");
+    }
+  }
+
+  /**
+   * Mendapatkan statistik detail untuk satu parking spesifik
+   * @param {string} parkingId - ID parking
+   * @returns {Promise<Object>} Parking statistics
+   */
+  static async getParkingStats(parkingId) {
+    const db = getDB();
+
+    try {
+      // Get parking info
+      const parking = await db.collection(this.collection).findOne({
+        _id: new ObjectId(parkingId),
+      });
+
+      if (!parking) {
+        throw new Error("Parking not found");
+      }
+
+      // Get all bookings for this parking
+      const bookings = await db
+        .collection("bookings")
+        .find({
+          parking_id: new ObjectId(parkingId),
+          status: { $in: ["completed", "paid"] },
+        })
+        .toArray();
+
+      // Calculate total revenue and bookings
+      const totalRevenue = bookings.reduce(
+        (sum, booking) => sum + (booking.total_price || 0),
+        0
+      );
+      const totalBookings = bookings.length;
+
+      // Calculate current occupancy rate
+      const totalCapacity =
+        (parking.capacity?.car || 0) + (parking.capacity?.motorcycle || 0);
+      const currentAvailable =
+        (parking.available?.car || 0) + (parking.available?.motorcycle || 0);
+      const currentOccupancyRate =
+        totalCapacity > 0
+          ? ((totalCapacity - currentAvailable) / totalCapacity) * 100
+          : 0;
+
+      // Calculate vehicle distribution
+      const carBookings = bookings.filter(
+        (b) => b.vehicle_type === "car"
+      ).length;
+      const motorcycleBookings = bookings.filter(
+        (b) => b.vehicle_type === "motorcycle"
+      ).length;
+      const vehicleDistribution = {
+        car: carBookings,
+        motorcycle: motorcycleBookings,
+        carPercentage:
+          totalBookings > 0 ? (carBookings / totalBookings) * 100 : 0,
+        motorcyclePercentage:
+          totalBookings > 0 ? (motorcycleBookings / totalBookings) * 100 : 0,
+      };
+
+      // Calculate daily stats (last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+      const dailyStatsAggregation = await db
+        .collection("bookings")
+        .aggregate([
+          {
+            $match: {
+              parking_id: new ObjectId(parkingId),
+              status: { $in: ["completed", "paid"] },
+              created_at: { $gte: sevenDaysAgo },
+            },
+          },
+          {
+            $group: {
+              _id: {
+                $dateToString: { format: "%Y-%m-%d", date: "$created_at" },
+              },
+              revenue: { $sum: "$total_price" },
+              bookings: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { _id: 1 },
+          },
+        ])
+        .toArray();
+
+      const dailyStats = dailyStatsAggregation.map((day) => ({
+        date: day._id,
+        revenue: day.revenue || 0,
+        bookings: day.bookings || 0,
+        occupancyRate: Math.random() * 100, // Placeholder - calculate based on time slots
+      }));
+
+      // Calculate monthly stats (last 6 months)
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+      const monthlyStatsAggregation = await db
+        .collection("bookings")
+        .aggregate([
+          {
+            $match: {
+              parking_id: new ObjectId(parkingId),
+              status: { $in: ["completed", "paid"] },
+              created_at: { $gte: sixMonthsAgo },
+            },
+          },
+          {
+            $group: {
+              _id: { $dateToString: { format: "%Y-%m", date: "$created_at" } },
+              revenue: { $sum: "$total_price" },
+              bookings: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { _id: 1 },
+          },
+        ])
+        .toArray();
+
+      const monthlyStats = monthlyStatsAggregation.map((month) => ({
+        month: month._id,
+        revenue: month.revenue || 0,
+        bookings: month.bookings || 0,
+        averageOccupancy: Math.random() * 100, // Placeholder
+      }));
+
+      // Calculate peak hours
+      const hourlyBookings = await db
+        .collection("bookings")
+        .aggregate([
+          {
+            $match: {
+              parking_id: new ObjectId(parkingId),
+              status: { $in: ["completed", "paid"] },
+            },
+          },
+          {
+            $group: {
+              _id: { $hour: "$start_time" },
+              count: { $sum: 1 },
+            },
+          },
+          {
+            $sort: { count: -1 },
+          },
+          {
+            $limit: 3,
+          },
+        ])
+        .toArray();
+
+      const peakHours = hourlyBookings.map((hour) => hour._id);
+
+      // Find best and worst performing days
+      const bestDay =
+        dailyStats.length > 0
+          ? dailyStats.reduce((prev, current) =>
+              prev.revenue > current.revenue ? prev : current
+            ).date
+          : null;
+
+      const worstDay =
+        dailyStats.length > 0
+          ? dailyStats.reduce((prev, current) =>
+              prev.revenue < current.revenue ? prev : current
+            ).date
+          : null;
+
+      return {
+        parkingId: parkingId,
+        parkingName: parking.name,
+        totalRevenue,
+        totalBookings,
+        averageRating: parking.rating || 0,
+        currentOccupancyRate: parseFloat(currentOccupancyRate.toFixed(1)),
+        dailyStats,
+        monthlyStats,
+        vehicleDistribution,
+        peakHours,
+        bestDay,
+        worstDay,
+      };
+    } catch (error) {
+      console.error("Error getting parking stats:", error);
+      throw new Error("Failed to get parking statistics");
+    }
+  }
 }

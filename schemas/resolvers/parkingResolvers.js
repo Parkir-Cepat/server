@@ -11,6 +11,34 @@ export const parkingResolvers = {
   },
 
   Query: {
+    getOwnerStats: async (_, __, { user }) => {
+      if (!user) {
+        throw new GraphQLError("User not authenticated", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+      }
+
+      return await Parking.getOwnerStats(user.id);
+    },
+
+    getParkingStats: async (_, { parkingId }, { user }) => {
+      if (!user) {
+        throw new GraphQLError("User not authenticated", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+      }
+
+      // Verify parking belongs to this owner
+      const parking = await Parking.findById(parkingId);
+      if (!parking || parking.owner_id.toString() !== user._id.toString()) {
+        throw new GraphQLError("Access denied to this parking stats", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+
+      return await Parking.getParkingStats(parkingId);
+    },
+
     getParking: async (_, { id }) => {
       const parking = await Parking.findById(id);
       if (!parking) throw new Error("Tempat parkir tidak ditemukan");
