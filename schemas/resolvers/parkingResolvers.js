@@ -15,13 +15,12 @@ export const parkingResolvers = {
       const parking = await Parking.findById(id);
       if (!parking) throw new Error("Tempat parkir tidak ditemukan");
       return parking;
-    },
-
-    getNearbyParkings: async (_, { longitude, latitude, maxDistance, limit }) => {
+    },    getNearbyParkings: async (_, { longitude, latitude, maxDistance, vehicleType, limit }) => {
       return await Parking.findNearby({
         longitude,
         latitude,
         maxDistance: maxDistance || 5000,
+        vehicleType,
         limit: limit || 20
       });
     },

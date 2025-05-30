@@ -129,6 +129,19 @@ const startServer = async () => {
       }
     );
 
+    // Google Maps API key endpoint
+    app.get('/api/google-maps-key', (req, res) => {
+      try {
+        if (!process.env.GOOGLE_MAPS_API_KEY) {
+          return res.status(500).json({ error: 'Google Maps API key not configured' });
+        }
+        res.json({ apiKey: process.env.GOOGLE_MAPS_API_KEY });
+      } catch (error) {
+        console.error('Error providing Google Maps API key:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
     // GraphQL endpoint
     app.use(
       '/graphql',
