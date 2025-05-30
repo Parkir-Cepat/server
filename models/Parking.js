@@ -40,20 +40,35 @@ export class Parking {
     const db = getDB();
     const parking = {
       name: parkingData.name,
-      description: parkingData.description,
-      images: parkingData.images || [],
-      operational_hours_start: parkingData.operational_hours_start,
-      operational_hours_end: parkingData.operational_hours_end,
+      address: parkingData.address,
       location: {
         type: "Point",
         coordinates: parkingData.location.coordinates
       },
-      total_slots: parkingData.total_slots,
-      available_slots: parkingData.available_slots || parkingData.total_slots,
-      tariff: parkingData.tariff,
-      threshold_minutes: parkingData.threshold_minutes || 30,
       owner_id: new ObjectId(parkingData.owner_id),
-      created_at: new Date()
+      capacity: {
+        car: parkingData.capacity.car,
+        motorcycle: parkingData.capacity.motorcycle
+      },
+      available: {
+        car: parkingData.capacity.car, // Initially all slots are available
+        motorcycle: parkingData.capacity.motorcycle
+      },
+      rates: {
+        car: parkingData.rates.car,
+        motorcycle: parkingData.rates.motorcycle
+      },
+      operational_hours: {
+        open: parkingData.operational_hours.open,
+        close: parkingData.operational_hours.close
+      },
+      facilities: parkingData.facilities || [],
+      images: parkingData.images || [],
+      status: 'active',
+      rating: 0,
+      review_count: 0,
+      created_at: new Date(),
+      updated_at: new Date()
     };
 
     const result = await db.collection(this.collection).insertOne(parking);

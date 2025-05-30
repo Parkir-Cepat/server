@@ -35,7 +35,40 @@ export const parkingResolvers = {
           extensions: { code: 'FORBIDDEN' }
         });
       }
-      return await Parking.findByOwner(user._id);
+      
+      const parkings = await Parking.findByOwner(user._id);
+      
+      // Filter out invalid parking data and ensure all required fields exist
+      return parkings.filter(parking => {
+        // Skip if missing required fields according to GraphQL schema
+        if (!parking.address || !parking.name) {
+          console.warn(`Skipping invalid parking ${parking._id}: missing required fields`);
+          return false;
+        }
+        
+        // Skip if has old structure
+        if (parking.total_slots || parking.available_slots || parking.tariff) {
+          console.warn(`Skipping old structure parking ${parking._id}: ${parking.name}`);
+          return false;
+        }
+        
+        // Skip if missing new structure
+        if (!parking.capacity || !parking.available || !parking.rates || !parking.operational_hours) {
+          console.warn(`Skipping incomplete parking ${parking._id}: ${parking.name}`);
+          return false;
+        }
+        
+        return true;
+      }).map(parking => ({
+        // Ensure all fields exist with defaults
+        ...parking,
+        facilities: parking.facilities || [],
+        images: parking.images || [],
+        status: parking.status || 'active',
+        rating: parking.rating || 0,
+        review_count: parking.review_count || 0,
+        updated_at: parking.updated_at || parking.created_at
+      }));
     },
 
     searchParkings: async (_, { query, limit }) => {
