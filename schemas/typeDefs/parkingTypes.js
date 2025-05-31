@@ -15,14 +15,59 @@ export const parkingTypes = `#graphql
   }
 
   type Rates {
-    car: Float!
-    motorcycle: Float!
+    car: Float
+    motorcycle: Float
   }
 
   type OperationalHours {
     open: String!
     close: String!
   }
+
+  type OwnerStats {
+    totalBalance: Float
+    currentBalance: Float
+    totalIncome: Float
+    totalBookings: Int
+    averageRating: Float
+  }
+
+  type DailyStats {
+  date: String!
+  revenue: Float!
+  bookings: Int!
+  occupancyRate: Float!
+}
+
+type MonthlyStats {
+  month: String!
+  revenue: Float!
+  bookings: Int!
+  averageOccupancy: Float!
+}
+
+type VehicleDistribution {
+  car: Int!
+  motorcycle: Int!
+  carPercentage: Float!
+  motorcyclePercentage: Float!
+}
+
+type ParkingStats {
+  parkingId: ID!
+  parkingName: String!
+  totalRevenue: Float!
+  totalBookings: Int!
+  averageRating: Float!
+  currentOccupancyRate: Float!
+  dailyStats: [DailyStats!]!
+  monthlyStats: [MonthlyStats!]!
+  vehicleDistribution: VehicleDistribution!
+  peakHours: [Int!]!
+  bestDay: String
+  worstDay: String
+}
+
 
   type Parking {
     _id: ID!
@@ -33,7 +78,7 @@ export const parkingTypes = `#graphql
     owner: User
     capacity: Capacity!
     available: Available!
-    rates: Rates!
+    rates: Rates
     operational_hours: OperationalHours!
     facilities: [String!]!
     images: [String!]!
@@ -85,6 +130,8 @@ export const parkingTypes = `#graphql
   }
 
   type Query {
+    getOwnerStats: OwnerStats 
+    getParkingStats(parkingId: ID!): ParkingStats
     getParking(id: ID!): Parking!
     getNearbyParkings(
       longitude: Float!
