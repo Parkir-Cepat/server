@@ -3,7 +3,7 @@ export const roomTypes = `#graphql
     _id: ID!
     name: String!
     type: String!
-    privacy: String!
+    privacy: String  # Remove the ! to make it nullable
     creator_id: ID!
     creator: User!
     max_participants: Int

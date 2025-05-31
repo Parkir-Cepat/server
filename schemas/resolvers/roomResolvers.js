@@ -7,6 +7,7 @@ export const roomResolvers = {
   Room: {
     name: (room) => room.nameRoom || "General Chat",
     type: (room) => room.type || "general",
+    privacy: (room) => room.privacy || "public", // Add this line
     creator: async (room) => {
       if (!room.creator_id) return null;
       return await User.findById(room.creator_id);

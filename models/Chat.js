@@ -337,4 +337,24 @@ export class Chat {
       .sort({ createdAt: -1 })
       .toArray();
   }
+
+  /**
+   * Mark all messages in a room as read by a specific user
+   * @param {string} roomId - ID room
+   * @param {string} userId - ID user
+   * @returns {Promise<Object>} Update result
+   */
+  static async markRoomAsRead(roomId, userId) {
+    const db = getDB();
+    return await db.collection(this.collection).updateMany(
+      { 
+        room_id: new ObjectId(roomId),
+        read_by: { $ne: new ObjectId(userId) }
+      },
+      { 
+        $addToSet: { read_by: new ObjectId(userId) },
+        $set: { updated_at: new Date() }
+      }
+    );
+  }
 }

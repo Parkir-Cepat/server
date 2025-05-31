@@ -80,20 +80,29 @@ export const chatResolvers = {
         throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
           extensions: { code: 'FORBIDDEN' }
         });
-      }
-
-      // Buat pesan
+      }      // Buat pesan
       const chat = await Chat.create({
         user_id: user._id,
         room_id,
         message
       });
 
-      // Publish event untuk subscription
-      pubsub.publish("MESSAGE_RECEIVED", {
-        messageReceived: chat,
+      // Populate sender data untuk subscription
+      const chatWithSender = {
+        ...chat,
+        sender: await User.findById(user._id),
+        room: room
+      };
+
+      // Publish event untuk subscription dengan room-specific channel
+      pubsub.publish(`MESSAGE_RECEIVED_${room_id}`, {
+        messageReceived: chatWithSender,
         roomId: room_id
-      });      return chat;
+      });
+
+      console.log(`Published message to room ${room_id}:`, message);
+      
+      return chatWithSender;
     },
 
     markRoomMessagesAsRead: async (_, { room_id }, { user }) => {
@@ -113,11 +122,17 @@ export const chatResolvers = {
       return true;
     }
   },
-
   Subscription: {
     messageReceived: {
       subscribe: (_, { room_id }) => {
-        return pubsub.asyncIterator(["MESSAGE_RECEIVED"]);
+        return pubsub.asyncIterator([`MESSAGE_RECEIVED_${room_id}`]);
+      },
+      resolve: (payload, { room_id }) => {
+        // Filter hanya untuk room yang tepat
+        if (payload.roomId === room_id) {
+          return payload.messageReceived;
+        }
+        return null;
       }
     }
   }
