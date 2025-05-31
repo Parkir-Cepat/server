@@ -94,19 +94,11 @@ export class Parking {
   static async findNearby({
     longitude,
     latitude,
-    maxDistance = 1000000, // Default 1000km instead of 5km
+    maxDistance = 5000,
     vehicleType = null,
-    limit = 100, // Increased limit
+    limit = 20,
   }) {
     const db = getDB();
-
-    console.log(`[Parking.findNearby] Searching with params:`, {
-      longitude,
-      latitude,
-      maxDistance: `${maxDistance}m (${(maxDistance / 1000).toFixed(1)}km)`,
-      vehicleType,
-      limit,
-    });
 
     const pipeline = [
       {
@@ -116,7 +108,7 @@ export class Parking {
             coordinates: [longitude, latitude],
           },
           distanceField: "distance",
-          maxDistance: maxDistance, // This will now use the dynamic value
+          maxDistance: maxDistance,
           spherical: true,
         },
       },
@@ -143,25 +135,7 @@ export class Parking {
 
     pipeline.push({ $limit: limit });
 
-    const results = await db
-      .collection(this.collection)
-      .aggregate(pipeline)
-      .toArray();
-
-    console.log(
-      `[Parking.findNearby] Found ${results.length} parkings within ${(
-        maxDistance / 1000
-      ).toFixed(1)}km`
-    );
-    results.forEach((parking, index) => {
-      console.log(
-        `  ${index + 1}. ${parking.name} - ${(parking.distance / 1000).toFixed(
-          2
-        )}km`
-      );
-    });
-
-    return results;
+    return await db.collection(this.collection).aggregate(pipeline).toArray();
   }
   /**
    * Update ketersediaan slot parking
@@ -607,3 +581,36 @@ export class Parking {
     }
   }
 }
+
+export const parkingResolvers = {
+  Query: {
+    // ...existing code...
+
+    getNearbyParkings: async (_, { longitude, latitude, maxDistance }) => {
+      try {
+        console.log(`[GraphQL] getNearbyParkings called with:`, {
+          longitude,
+          latitude,
+          maxDistance: maxDistance ? `${maxDistance}m` : "default",
+        });
+
+        const parkings = await Parking.findNearby({
+          longitude,
+          latitude,
+          maxDistance: maxDistance || 1000000, // Default 1000km if not provided
+          limit: 100,
+        });
+
+        console.log(`[GraphQL] Returning ${parkings.length} parkings`);
+        return parkings;
+      } catch (error) {
+        console.error("Error fetching nearby parkings:", error);
+        throw new Error("Failed to fetch nearby parkings");
+      }
+    },
+
+    // ...existing code...
+  },
+
+  // ...existing code...
+};
