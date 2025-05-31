@@ -91,27 +91,51 @@ export class Parking {
    * @param {Object} params - Parameter pencarian
    * @returns {Promise<Array>} Array of parking documents
    */
-  static async findNearby({ longitude, latitude, maxDistance = 5000, vehicleType = null, limit = 20 }) {
+  static async findNearby({
+    longitude,
+    latitude,
+    maxDistance = 5000,
+    vehicleType = null,
+    limit = 20,
+  }) {
     const db = getDB();
-    return await db.collection(this.collection).aggregate([
+
+    const pipeline = [
       {
         $geoNear: {
           near: {
             type: "Point",
-            coordinates: [longitude, latitude]
+            coordinates: [longitude, latitude],
           },
           distanceField: "distance",
           maxDistance: maxDistance,
-          spherical: true
-        }
+          spherical: true,
+        },
       },
       {
         $match: {
-          available_slots: { $gt: 0 }
-        }
+          status: "active",
+          is_deleted: { $ne: true },
+        },
       },
-      { $limit: 20 }
-    ]).toArray();
+    ];
+
+    // Add vehicle type filter if specified
+    if (vehicleType) {
+      if (vehicleType === "car") {
+        pipeline.push({
+          $match: { "available.car": { $gt: 0 } },
+        });
+      } else if (vehicleType === "motorcycle") {
+        pipeline.push({
+          $match: { "available.motorcycle": { $gt: 0 } },
+        });
+      }
+    }
+
+    pipeline.push({ $limit: limit });
+
+    return await db.collection(this.collection).aggregate(pipeline).toArray();
   }
   /**
    * Update ketersediaan slot parking
@@ -122,12 +146,13 @@ export class Parking {
    */
   static async updateAvailability(parkingId, vehicleType, change) {
     const db = getDB();
-    const updateField = vehicleType === 'car' ? 'available.car' : 'available.motorcycle';
-    
+    const updateField =
+      vehicleType === "car" ? "available.car" : "available.motorcycle";
+
     const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: new ObjectId(parkingId) },
-      { 
-        $inc: { available_slots: change }
+      {
+        $inc: { available_slots: change },
       },
       { returnDocument: "after" }
     );
@@ -249,9 +274,9 @@ export class Parking {
    */
   static async findWithFilters(filters = {}) {
     const db = getDB();
-    const query = { 
+    const query = {
       is_deleted: { $ne: true },
-      status: 'active'
+      status: "active",
     };
 
     if (filters.search) {
@@ -266,14 +291,16 @@ export class Parking {
 
     if (filters.minMotorcycleRate || filters.maxMotorcycleRate) {
       query["rates.motorcycle"] = {};
-      if (filters.minMotorcycleRate) query["rates.motorcycle"].$gte = filters.minMotorcycleRate;
-      if (filters.maxMotorcycleRate) query["rates.motorcycle"].$lte = filters.maxMotorcycleRate;
+      if (filters.minMotorcycleRate)
+        query["rates.motorcycle"].$gte = filters.minMotorcycleRate;
+      if (filters.maxMotorcycleRate)
+        query["rates.motorcycle"].$lte = filters.maxMotorcycleRate;
     }
 
     if (filters.vehicleType) {
-      if (filters.vehicleType === 'car') {
+      if (filters.vehicleType === "car") {
         query["available.car"] = { $gt: 0 };
-      } else if (filters.vehicleType === 'motorcycle') {
+      } else if (filters.vehicleType === "motorcycle") {
         query["available.motorcycle"] = { $gt: 0 };
       }
     }

@@ -45,13 +45,35 @@ export const parkingResolvers = {
       return parking;
     },
 
-    getNearbyParkings: async (_, { longitude, latitude, maxDistance, limit }) => {
-      return await Parking.findNearby({
+    getNearbyParkings: async (
+      _,
+      { longitude, latitude, maxDistance, limit, vehicleType }
+    ) => {
+      console.log("getNearbyParkings called with:", {
         longitude,
         latitude,
-        maxDistance: maxDistance || 5000,
-        limit: limit || 20
+        maxDistance,
+        limit,
+        vehicleType,
       });
+
+      try {
+        const result = await Parking.findNearby({
+          longitude,
+          latitude,
+          maxDistance: maxDistance || 50000,
+          limit: limit || 20,
+          vehicleType,
+        });
+
+        console.log("findNearby result:", result);
+        return result;
+      } catch (error) {
+        console.error("Error in getNearbyParkings:", error);
+        throw new GraphQLError("Failed to find nearby parkings", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
     },
 
     getMyParkings: async (_, __, { user }) => {
