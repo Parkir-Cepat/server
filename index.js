@@ -1,22 +1,22 @@
-import { ApolloServer } from '@apollo/server';
-import { expressMiddleware } from '@apollo/server/express4';
-import { ApolloServerPluginDrainHttpServer } from '@apollo/server/plugin/drainHttpServer';
-import { createServer } from 'http';
-import express from 'express';
-import { WebSocketServer } from 'ws';
-import { useServer } from 'graphql-ws/lib/use/ws';
-import { makeExecutableSchema } from '@graphql-tools/schema';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { connectDB } from './config/db.js';
-import { authContext } from './helpers/jwt.js';
-import typeDefs from './schemas/typeDefs/index.js';
-import resolvers from './schemas/resolvers/index.js';
-import { verifyNotification } from './helpers/midtrans.js';
-import { Transaction } from './models/Transaction.js';
-import session from 'express-session';
-import passport from './helpers/googleAuth.js';
-
+import { ApolloServer } from "@apollo/server";
+import { expressMiddleware } from "@apollo/server/express4";
+import { ApolloServerPluginDrainHttpServer } from "@apollo/server/plugin/drainHttpServer";
+import { createServer } from "http";
+import express from "express";
+import { WebSocketServer } from "ws";
+import { useServer } from "graphql-ws/lib/use/ws";
+import { makeExecutableSchema } from "@graphql-tools/schema";
+import cors from "cors";
+import dotenv from "dotenv";
+import { connectDB } from "./config/db.js";
+import { authContext } from "./helpers/jwt.js";
+import typeDefs from "./schemas/typeDefs/index.js";
+import resolvers from "./schemas/resolvers/index.js";
+import { verifyNotification } from "./helpers/midtrans.js";
+import { Transaction } from "./models/Transaction.js";
+import session from "express-session";
+import passport from "./helpers/googleAuth.js";
+import webhookRoutes from "./routes/webhook.js";
 
 // Load environment variables
 dotenv.config();
@@ -30,7 +30,7 @@ const httpServer = createServer(app);
 // Create WebSocket server
 const wsServer = new WebSocketServer({
   server: httpServer,
-  path: process.env.WS_PATH || '/graphql',
+  path: process.env.WS_PATH || "/graphql",
 });
 
 // Create GraphQL schema
@@ -78,17 +78,20 @@ const startServer = async () => {
     // Apply middleware
     app.use(
       cors({
-        origin: function(origin, callback) {
-          const allowedOrigins = ['http://localhost:3000', 'http://localhost:5173'];
+        origin: function (origin, callback) {
+          const allowedOrigins = [
+            "http://localhost:3000",
+            "http://localhost:5173",
+          ];
           if (!origin || allowedOrigins.indexOf(origin) !== -1) {
             callback(null, true);
           } else {
-            callback(new Error('Not allowed by CORS'));
+            callback(new Error("Not allowed by CORS"));
           }
         },
         credentials: true,
-        methods: ['GET', 'POST', 'OPTIONS'],
-        allowedHeaders: ['Content-Type', 'Authorization']
+        methods: ["GET", "POST", "OPTIONS"],
+        allowedHeaders: ["Content-Type", "Authorization"],
       })
     );
     app.use(express.json());
@@ -96,13 +99,13 @@ const startServer = async () => {
     // Setup session
     app.use(
       session({
-        secret: process.env.SESSION_SECRET || 'your-secret-key',
+        secret: process.env.SESSION_SECRET || "your-secret-key",
         resave: false,
         saveUninitialized: false,
         cookie: {
-          secure: process.env.NODE_ENV === 'production',
-          maxAge: 24 * 60 * 60 * 1000 // 24 jam
-        }
+          secure: process.env.NODE_ENV === "production",
+          maxAge: 24 * 60 * 60 * 1000, // 24 jam
+        },
       })
     );
 
@@ -111,17 +114,20 @@ const startServer = async () => {
     app.use(passport.session());
 
     // Google OAuth routes
-    app.get('/auth/google',
-      passport.authenticate('google', { 
-        scope: ['profile', 'email'],
-        session: false 
+    app.get(
+      "/auth/google",
+      passport.authenticate("google", {
+        scope: ["profile", "email"],
+        session: false,
       })
     );
 
-    app.get('/auth/google/callback',
-      passport.authenticate('google', { 
+    app.get(
+      "/auth/google/callback",
+      passport.authenticate("google", {
         session: false,
-        failureRedirect: process.env.CLIENT_URL + '/login?error=google-auth-failed'
+        failureRedirect:
+          process.env.CLIENT_URL + "/login?error=google-auth-failed",
       }),
       (req, res) => {
         const token = generateGoogleAuthToken(req.user);
@@ -130,21 +136,23 @@ const startServer = async () => {
     );
 
     // Google Maps API key endpoint
-    app.get('/api/google-maps-key', (req, res) => {
+    app.get("/api/google-maps-key", (req, res) => {
       try {
         if (!process.env.GOOGLE_MAPS_API_KEY) {
-          return res.status(500).json({ error: 'Google Maps API key not configured' });
+          return res
+            .status(500)
+            .json({ error: "Google Maps API key not configured" });
         }
         res.json({ apiKey: process.env.GOOGLE_MAPS_API_KEY });
       } catch (error) {
-        console.error('Error providing Google Maps API key:', error);
-        res.status(500).json({ error: 'Internal server error' });
+        console.error("Error providing Google Maps API key:", error);
+        res.status(500).json({ error: "Internal server error" });
       }
     });
 
     // GraphQL endpoint
     app.use(
-      '/graphql',
+      "/graphql",
       expressMiddleware(server, {
         context: async ({ req }) => {
           return await authContext({ req });
@@ -152,97 +160,19 @@ const startServer = async () => {
       })
     );
 
-    // Webhook endpoint untuk notifikasi Midtrans
-    app.post('/midtrans-webhook', async (req, res) => {
-      try {
-        console.log('🔔 Webhook Midtrans received:', JSON.stringify(req.body, null, 2));
-        
-        const notification = req.body;
-        const { orderId, status } = await verifyNotification(notification);
-        
-        console.log(`📋 Processing order: ${orderId}, status: ${status}`);        // Proses semua transaksi dengan Transaction model
-        console.log('💳 Processing transaction...');
-        const trx = await Transaction.findByTransactionId(orderId);
-        console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
-        
-        if (trx) {
-          // Update status transaksi
-          const updated = await Transaction.updateStatus(trx._id, status);
-          console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
-          
-          // Jika status success dan transaksi adalah top-up, update saldo user
-          if (status === 'success' && trx.status !== 'success' && trx.type === 'top_up') {
-            console.log(`💵 Adding ${trx.amount} to user ${trx.user_id} balance...`);
-            const { User } = await import('./models/User.js');
-            const userUpdate = await User.updateSaldo(trx.user_id, trx.amount);
-            console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
-          } else {
-            console.log(`ℹ️ No saldo update needed. Type: ${trx.type}, Status: ${status}`);
-          }
-        } else {
-          console.log('❌ Transaction not found for orderId:', orderId);
-        }
-
-        console.log('✅ Webhook processed successfully');
-        res.status(200).json({ status: 'success' });
-      } catch (error) {
-        console.error('❌ Error handling Midtrans webhook:', error);
-        res.status(500).json({ status: 'error', message: error.message });
-      }
-    });
-
-    // Endpoint untuk testing webhook secara manual
-    app.post('/test-webhook', async (req, res) => {
-      try {
-        const { orderId } = req.body;
-        console.log('🧪 Testing webhook for orderId:', orderId);
-        
-        // Simulasi payload webhook Midtrans
-        const mockNotification = {
-          order_id: orderId,
-          transaction_status: 'settlement',
-          payment_type: 'gopay',
-          transaction_id: 'test-' + Date.now()
-        };
-        
-        // Panggil logika webhook yang sama
-        const { orderId: processedOrderId, status } = { orderId: mockNotification.order_id, status: 'success' };        // Process transaction
-        const trx = await Transaction.findByTransactionId(processedOrderId);
-        console.log('📊 Found transaction:', trx ? `ID: ${trx._id}, Status: ${trx.status}, Amount: ${trx.amount}` : 'Not found');
-        
-        if (trx) {
-          const updated = await Transaction.updateStatus(trx._id, status);
-          console.log('✅ Transaction status updated:', updated ? 'Success' : 'Failed');
-          
-          if (status === 'success' && trx.status !== 'success' && trx.type === 'top_up') {
-            console.log(`💵 Adding ${trx.amount} to user ${trx.user_id} balance...`);
-            const { User } = await import('./models/User.js');
-            const userUpdate = await User.updateSaldo(trx.user_id, trx.amount);
-            console.log('👤 User saldo updated:', userUpdate ? 'Success' : 'Failed');
-          }
-        }
-        
-        res.status(200).json({ 
-          status: 'success', 
-          message: 'Test webhook completed',
-          orderId: processedOrderId 
-        });
-      } catch (error) {
-        console.error('❌ Error in test webhook:', error);
-        res.status(500).json({ status: 'error', message: error.message });
-      }
-    });
+    // Webhook routes (before other middleware)
+    app.use("/webhook", webhookRoutes);
 
     // Start HTTP server
     const PORT = process.env.PORT || 3000;
     httpServer.listen(PORT, () => {
       console.log(`
 🚀 Server siap di http://localhost:${PORT}/graphql
-🔌 WebSocket siap di ws://localhost:${PORT}${process.env.WS_PATH || '/graphql'}
+🔌 WebSocket siap di ws://localhost:${PORT}${process.env.WS_PATH || "/graphql"}
       `);
     });
   } catch (error) {
-    console.error('❌ Error starting server:', error);
+    console.error("❌ Error starting server:", error);
     process.exit(1);
   }
 };

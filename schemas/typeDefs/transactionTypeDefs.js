@@ -26,6 +26,14 @@ export const transactionTypeDefs = gql`
     qr_code: String
   }
 
+  type PaymentSimulationResult {
+    success: Boolean
+    message: String
+    transaction: Transaction
+    user: User
+    webhook_data: String
+  }
+
   type TransactionStatusResponse {
     transaction_status: String
     order_id: String
@@ -70,6 +78,7 @@ export const transactionTypeDefs = gql`
     createPayment(input: PaymentInput!): Transaction
     topUpSaldo(input: TopUpInput!): PaymentResponse
     confirmPayment(transaction_id: String!): Transaction
+    simulatePaymentSuccess(transaction_id: String!): PaymentSimulationResult
     handleMidtransWebhook(
       webhookData: WebhookInput!
     ): TransactionStatusResponse!
