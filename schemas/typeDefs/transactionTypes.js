@@ -1,13 +1,9 @@
-import { gql } from "apollo-server-express";
-
-export const transactionTypeDefs = gql`
-  scalar Date
-
+export const transactionTypes = `#graphql
   type Transaction {
     _id: ID!
-    user_id: String!
+    user_id: ID!
     user: User
-    booking_id: String
+    booking_id: ID
     booking: Booking
     transaction_id: String!
     type: String!
@@ -15,9 +11,18 @@ export const transactionTypeDefs = gql`
     amount: Float!
     status: String!
     qr_code_url: String
-    description: String
-    createdAt: String
-    updatedAt: String
+    created_at: String!
+    updated_at: String!
+  }
+
+  input CreatePaymentInput {
+    booking_id: ID!
+    payment_method: String!
+  }
+
+  input TopUpInput {
+    amount: Float!
+    payment_method: String!
   }
 
   type PaymentResponse {
@@ -26,56 +31,24 @@ export const transactionTypeDefs = gql`
     qr_code: String
   }
 
-  type TransactionStatusResponse {
-    transaction_status: String
-    order_id: String
-    gross_amount: Int
-    payment_type: String
+  type Query {
+    getTransaction(id: ID!): Transaction!
+    getBookingPayment(booking_id: ID!): Transaction!
+    getMyTransactionHistory: [Transaction!]!
+    getMyPaymentHistory: [Transaction!]!
+    getMySaldoTransactions: [Transaction!]!
   }
 
-  input TopUpInput {
-    amount: Float!
-    payment_method: String!
+  type Mutation {
+    createPayment(input: CreatePaymentInput!): PaymentResponse!
+    topUpSaldo(input: TopUpInput!): PaymentResponse!
+    confirmPayment(transaction_id: String!): Transaction!
+    handleMidtransNotification(notification: JSON!): Transaction
   }
 
-  input PaymentInput {
-    booking_id: String!
-    payment_method: String!
-  }
-
-  input WebhookInput {
-    order_id: String!
-    transaction_status: String!
-    fraud_status: String
-    status_code: String
-    gross_amount: String
-    payment_type: String
-    signature_key: String
-  }
-
-  extend type Query {
-    getTransaction(id: ID!): Transaction
-    getMyTransactionHistory(
-      type: String
-      status: String
-      limit: Int
-    ): [Transaction]
-    getMyPaymentHistory: [Transaction]
-    getMySaldoTransactions: [Transaction]
-    getBookingPayment(booking_id: String!): Transaction
-    checkTransactionStatus(transaction_id: String!): Transaction
-  }
-
-  extend type Mutation {
-    createPayment(input: PaymentInput!): Transaction
-    topUpSaldo(input: TopUpInput!): PaymentResponse
-    confirmPayment(transaction_id: String!): Transaction
-    handleMidtransWebhook(
-      webhookData: WebhookInput!
-    ): TransactionStatusResponse!
-  }
-
-  extend type Subscription {
-    transactionStatusChanged: Transaction
+  type Subscription {
+    transactionStatusChanged(user_id: ID!): Transaction!
+    paymentStatusChanged(booking_id: ID!): Transaction!
+    saldoUpdated(user_id: ID!): Transaction!
   }
 `;

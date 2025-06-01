@@ -12,7 +12,6 @@ export const bookingTypes = `#graphql
     status: String!
     created_at: String!
     updated_at: String!
-    payment: Transaction
     qr_code: String
     entry_qr: String
     exit_qr: String
@@ -25,6 +24,21 @@ export const bookingTypes = `#graphql
     duration: Int!
   }
 
+  type BookingResponse {
+    booking: Booking!
+    qr_code: String
+    total_cost: Float!
+    message: String
+  }
+
+  type QRResponse {
+    qrCode: String!
+    qrType: String!
+    expiresAt: String!
+    instructions: String!
+    booking: Booking!
+  }
+
   type Query {
     getBooking(id: ID!): Booking!
     getMyActiveBookings: [Booking!]!
@@ -33,10 +47,18 @@ export const bookingTypes = `#graphql
   }
 
   type Mutation {
-    createBooking(input: CreateBookingInput!): Booking!
+    createBooking(input: CreateBookingInput!): BookingResponse!
     cancelBooking(id: ID!): Booking!
     confirmBooking(id: ID!): Booking!
     extendBooking(id: ID!, additionalDuration: Int!): Booking!
+    
+    # Updated QR mutations - more specific
+    generateEntryQR(bookingId: ID!): QRResponse!
+    generateExitQR(bookingId: ID!): QRResponse!
+    scanEntryQR(qrCode: String!): BookingResponse!
+    scanExitQR(qrCode: String!): BookingResponse!
+    
+    # Keep the old one for backward compatibility if needed
     generateBookingQR(bookingId: ID!): Booking!
     verifyQRCode(qrToken: String!): QRVerificationResult!
     generateParkingAccessQR(bookingId: ID!, type: String!): String!
@@ -47,6 +69,7 @@ export const bookingTypes = `#graphql
     booking: Booking
     message: String!
   }
+
   type Subscription {
     bookingStatusChanged(parking_id: ID!): Booking!
   }

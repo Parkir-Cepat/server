@@ -158,20 +158,48 @@ export const parkingResolvers = {
 
   Mutation: {
     createParking: async (_, { input }, { user }) => {
-      if (!user)
+      if (!user) {
         throw new GraphQLError("Anda harus login terlebih dahulu", {
           extensions: { code: "UNAUTHENTICATED" },
         });
-      if (user.role !== "landowner") {
-        throw new GraphQLError("Anda tidak memiliki akses", {
-          extensions: { code: "FORBIDDEN" },
-        });
       }
 
-      return await Parking.create({
-        ...input,
-        owner_id: user._id,
-      });
+      try {
+        // Ensure proper GeoJSON format for location
+        const locationData = input.location
+          ? {
+              type: "Point",
+              coordinates: input.location.coordinates,
+            }
+          : null;
+
+        const parkingData = {
+          ...input,
+          location: locationData,
+          owner_id: user._id,
+          // Set available sama dengan capacity saat create
+          available: {
+            car: input.capacity.car,
+            motorcycle: input.capacity.motorcycle,
+          },
+          rating: 0,
+          review_count: 0,
+          status: "active",
+        };
+
+        const parking = await Parking.create(parkingData);
+
+        console.log(`✅ Parking created with proper GeoJSON:`, {
+          location: parking.location,
+          capacity: parking.capacity,
+          available: parking.available,
+        });
+
+        return parking;
+      } catch (error) {
+        console.error("❌ Create parking error:", error);
+        throw new Error(`Gagal membuat parking: ${error.message}`);
+      }
     },
 
     updateParking: async (_, { id, input }, { user }) => {
@@ -243,6 +271,86 @@ export const parkingResolvers = {
       }
 
       return await Parking.updateAvailability(id, available_slots);
+    },
+
+    // Fix parking available slots
+    fixParkingAvailability: async (_, { parking_id }, { user }) => {
+      if (!user) {
+        throw new GraphQLError("Authentication required", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+      }
+
+      const db = getDB();
+      const parking = await db.collection("parkings").findOne({
+        _id: new ObjectId(parking_id),
+      });
+
+      if (!parking) {
+        throw new Error("Parking tidak ditemukan");
+      }
+
+      // Check if user is owner or admin
+      if (
+        parking.owner_id.toString() !== user._id.toString() &&
+        user.role !== "admin"
+      ) {
+        throw new Error("Tidak memiliki akses");
+      }
+
+      // Count actual bookings that are active
+      const activeBookings = await db
+        .collection("bookings")
+        .aggregate([
+          {
+            $match: {
+              parking_id: new ObjectId(parking_id),
+              status: { $in: ["pending", "confirmed"] },
+            },
+          },
+          {
+            $group: {
+              _id: "$vehicle_type",
+              count: { $sum: 1 },
+            },
+          },
+        ])
+        .toArray();
+
+      // Calculate actual available slots
+      const carBookings =
+        activeBookings.find((b) => b._id === "car")?.count || 0;
+      const motorcycleBookings =
+        activeBookings.find((b) => b._id === "motorcycle")?.count || 0;
+
+      const actualAvailable = {
+        car: Math.max(0, parking.capacity.car - carBookings),
+        motorcycle: Math.max(
+          0,
+          parking.capacity.motorcycle - motorcycleBookings
+        ),
+      };
+
+      // Update parking with correct available slots
+      const result = await db.collection("parkings").findOneAndUpdate(
+        { _id: new ObjectId(parking_id) },
+        {
+          $set: {
+            available: actualAvailable,
+            updated_at: new Date(),
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      console.log(`✅ Fixed parking availability:`, {
+        parking_id,
+        capacity: parking.capacity,
+        activeBookings: { car: carBookings, motorcycle: motorcycleBookings },
+        newAvailable: actualAvailable,
+      });
+
+      return result;
     },
   },
 };

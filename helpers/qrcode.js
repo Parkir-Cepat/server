@@ -1,5 +1,5 @@
-import QRCode from 'qrcode';
-import jwt from 'jsonwebtoken';
+import QRCode from "qrcode";
+import jwt from "jsonwebtoken";
 
 /**
  * Generate QR Code untuk booking
@@ -17,48 +17,78 @@ export const generateBookingQR = async (bookingData) => {
         startTime: bookingData.startTime,
         vehicleType: bookingData.vehicleType,
         status: bookingData.status,
-        generatedAt: new Date().toISOString()
+        generatedAt: new Date().toISOString(),
       },
       process.env.JWT_SECRET,
-      { expiresIn: '24h' } // QR valid 24 jam
+      { expiresIn: "24h" } // QR valid 24 jam
     );
 
     // Generate QR code
     const qrCodeDataURL = await QRCode.toDataURL(qrToken, {
-      errorCorrectionLevel: 'M',
-      type: 'image/png',
+      errorCorrectionLevel: "M",
+      type: "image/png",
       quality: 0.92,
       margin: 1,
       color: {
-        dark: '#000000',
-        light: '#FFFFFF'
+        dark: "#000000",
+        light: "#FFFFFF",
       },
-      width: 256
+      width: 256,
     });
 
     return qrCodeDataURL;
   } catch (error) {
-    console.error('Error generating QR code:', error);
-    throw new Error('Gagal membuat QR code');
+    console.error("Error generating QR code:", error);
+    throw new Error("Gagal membuat QR code");
   }
 };
 
 /**
- * Verify QR Code token
- * @param {string} qrToken - Token dari QR code
- * @returns {Object} Decoded booking data
+ * Generate Entry QR Token
+ * @param {Object} data - Entry data
+ * @returns {Promise<string>} QR Token
  */
-export const verifyQRToken = (qrToken) => {
+export const generateEntryQRToken = async (data) => {
+  const payload = {
+    type: "entry",
+    bookingId: data.bookingId,
+    parkingId: data.parkingId,
+    vehicleType: data.vehicleType,
+    expiresAt: data.expiresAt,
+    createdAt: new Date().toISOString(),
+  };
+
+  return jwt.sign(payload, process.env.JWT_SECRET);
+};
+
+/**
+ * Generate Exit QR Token
+ * @param {Object} data - Exit data
+ * @returns {Promise<string>} QR Token
+ */
+export const generateExitQRToken = async (data) => {
+  const payload = {
+    type: "exit",
+    bookingId: data.bookingId,
+    parkingId: data.parkingId,
+    vehicleType: data.vehicleType,
+    expiresAt: data.expiresAt,
+    createdAt: new Date().toISOString(),
+  };
+
+  return jwt.sign(payload, process.env.JWT_SECRET);
+};
+
+/**
+ * Verify QR Token
+ * @param {string} token - QR Token
+ * @returns {Object} Decoded token
+ */
+export const verifyQRToken = (token) => {
   try {
-    const decoded = jwt.verify(qrToken, process.env.JWT_SECRET);
-    return decoded;
+    return jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
-    if (error.name === 'TokenExpiredError') {
-      throw new Error('QR Code sudah expired');
-    } else if (error.name === 'JsonWebTokenError') {
-      throw new Error('QR Code tidak valid');
-    }
-    throw new Error('Gagal memverifikasi QR Code');
+    throw new Error("QR Code tidak valid atau expired");
   }
 };
 
@@ -73,20 +103,20 @@ export const generateParkingAccessQR = async (data) => {
       type: data.type, // 'entry' atau 'exit'
       bookingId: data.bookingId,
       timestamp: new Date().toISOString(),
-      parkingLotId: data.parkingLotId
+      parkingLotId: data.parkingLotId,
     };
 
     const qrCodeDataURL = await QRCode.toDataURL(JSON.stringify(qrData), {
-      errorCorrectionLevel: 'H',
-      type: 'image/png',
+      errorCorrectionLevel: "H",
+      type: "image/png",
       quality: 0.92,
       margin: 1,
-      width: 200
+      width: 200,
     });
 
     return qrCodeDataURL;
   } catch (error) {
-    console.error('Error generating parking access QR:', error);
-    throw new Error('Gagal membuat QR code akses parking');
+    console.error("Error generating parking access QR:", error);
+    throw new Error("Gagal membuat QR code akses parking");
   }
-}; 
+};

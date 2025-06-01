@@ -50,37 +50,28 @@ export class Parking {
    */
   static async create(parkingData) {
     const db = getDB();
-    const parking = {
-      name: parkingData.name,
-      address: parkingData.address,
-      location: {
+
+    // Ensure available is set to capacity if not provided
+    if (!parkingData.available && parkingData.capacity) {
+      parkingData.available = {
+        car: parkingData.capacity.car || 0,
+        motorcycle: parkingData.capacity.motorcycle || 0,
+      };
+    }
+
+    // Fix GeoJSON location format
+    if (parkingData.location && parkingData.location.coordinates) {
+      parkingData.location = {
         type: "Point",
         coordinates: parkingData.location.coordinates,
-      },
-      capacity: {
-        car: parkingData.capacity?.car || 0,
-        motorcycle: parkingData.capacity?.motorcycle || 0,
-      },
-      available: {
-        car: parkingData.available?.car ?? 0,
-        bike: parkingData.available?.bike ?? 0,
-      },
-      rates: {
-        car: parkingData.rates?.car || 0,
-        motorcycle: parkingData.rates?.motorcycle || 0,
-      },
-      operational_hours: {
-        open: parkingData.operational_hours?.open,
-        close: parkingData.operational_hours?.close,
-      },
-      facilities: parkingData.facilities || [],
-      images: parkingData.images || [],
-      status: parkingData.status || "active",
-      rating: 0,
-      review_count: 0,
+      };
+    }
+
+    const parking = {
+      ...parkingData,
       owner_id: new ObjectId(parkingData.owner_id),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: new Date(),
+      updated_at: new Date(),
     };
 
     const result = await db.collection(this.collection).insertOne(parking);

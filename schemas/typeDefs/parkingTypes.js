@@ -150,9 +150,7 @@ type ParkingStats {
     createParking(input: CreateParkingInput!): Parking!
     updateParking(id: ID!, input: UpdateParkingInput!): Parking!
     deleteParking(id: ID!): Boolean!
-    addParkingImage(id: ID!, imageUrl: String!): Parking!
-    removeParkingImage(id: ID!, imageUrl: String!): Parking!
-    updateParkingRating(id: ID!, rating: Float!): Parking!
-    updateParkingAvailability(id: ID!, available_slots: Int!): Parking!
+    fixParkingAvailability(parking_id: ID!): Parking!
+    updateParkingAvailability(parking_id: ID!): Parking!
   }
 `;
