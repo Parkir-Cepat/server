@@ -24,6 +24,26 @@ export const bookingTypes = `#graphql
     duration: Int!
   }
 
+  # ✅ NEW: Response type for parking bookings with stats
+  type ParkingBookingsResult {
+    bookings: [Booking]!
+    total: Int!
+    hasMore: Boolean!
+    stats: BookingStats
+  }
+
+  # ✅ NEW: Booking statistics for land owner dashboard
+  type BookingStats {
+    totalBookings: Int!
+    pendingCount: Int!
+    confirmedCount: Int!
+    activeCount: Int!
+    completedCount: Int!
+    cancelledCount: Int!
+    totalRevenue: Float!
+    todayBookings: Int!
+  }
+
   type BookingResponse {
     booking: Booking!
     qr_code: String
@@ -50,7 +70,16 @@ export const bookingTypes = `#graphql
     getBooking(id: ID!): Booking!
     getMyActiveBookings: [Booking!]!
     getMyBookingHistory: [Booking!]!
-    getParkingBookings(parking_id: ID!): [Booking!]!
+    
+    # ✅ UPDATED: Enhanced query for land owner with filters
+    getParkingBookings(
+      parkingId: ID!
+      status: String
+      startDate: String
+      endDate: String
+      limit: Int
+      offset: Int
+    ): ParkingBookingsResult!
   }
 
   type Mutation {

@@ -33,23 +33,95 @@ export const bookingResolvers = {
     },
 
     // Mendapatkan booking untuk parking tertentu
-    getParkingBookings: async (_, { parking_id }, { user }) => {
+    getParkingBookings: async (_, args, { user }) => {
       ensureAuth(user);
 
-      const parking = await Parking.findById(parking_id);
-      if (!parking) throw new Error("Parking tidak ditemukan");
+      const {
+        parkingId,
+        status,
+        startDate,
+        endDate,
+        limit = 50,
+        offset = 0,
+      } = args;
 
-      // Hanya owner yang bisa melihat booking parkingnya
-      if (parking.owner_id.toString() !== user._id) {
-        throw new Error("Anda tidak memiliki akses");
+      try {
+        console.log("🔍 getParkingBookings called with:", {
+          parkingId,
+          status,
+          limit,
+          offset,
+        });
+
+        // Verify that user owns the parking using Parking model
+        const parking = await Parking.findById(parkingId);
+        if (!parking) {
+          throw new GraphQLError("Parking tidak ditemukan", {
+            extensions: { code: "PARKING_NOT_FOUND" },
+          });
+        }
+
+        if (parking.owner_id.toString() !== user._id.toString()) {
+          throw new GraphQLError("Anda tidak memiliki akses ke parking ini", {
+            extensions: { code: "UNAUTHORIZED_PARKING_ACCESS" },
+          });
+        }
+
+        console.log("✅ Parking ownership verified");
+
+        // ✅ USE MODEL METHOD instead of direct MongoDB operations
+        const result = await Booking.getParkingBookings({
+          parkingId,
+          status,
+          startDate,
+          endDate,
+          limit,
+          offset,
+        });
+
+        console.log("✅ Booking data retrieved:", {
+          totalBookings: result.total,
+          returnedCount: result.bookings.length,
+        });
+
+        // Format response for GraphQL
+        return {
+          bookings: result.bookings.map((booking) => ({
+            ...booking,
+            _id: booking._id.toString(),
+            user_id: booking.user_id.toString(),
+            parking_id: booking.parking_id.toString(),
+            // Add parking data from the verified parking
+            parking: {
+              _id: parking._id.toString(),
+              name: parking.name,
+              address: parking.address,
+              location: parking.location,
+              owner_id: parking.owner_id.toString(),
+              rates: parking.rates,
+              capacity: parking.capacity,
+              available: parking.available,
+              status: parking.status,
+              // Add other parking fields as needed
+            },
+          })),
+          total: result.total,
+          hasMore: result.hasMore,
+          stats: result.stats,
+        };
+      } catch (error) {
+        console.error("❌ Get parking bookings error:", error);
+        throw new GraphQLError(
+          `Gagal mengambil data booking: ${error.message}`,
+          {
+            extensions: {
+              code: "GET_PARKING_BOOKINGS_FAILED",
+              parkingId,
+              userId: user._id,
+            },
+          }
+        );
       }
-
-      const db = getDB();
-      return await db
-        .collection("bookings")
-        .find({ parking_id: new ObjectId(parking_id) })
-        .sort({ created_at: -1 })
-        .toArray();
     },
   },
 

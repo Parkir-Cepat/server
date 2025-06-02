@@ -249,15 +249,159 @@ export class Booking {
       .toArray();
   }
 
-  static async setupIndexes() {
+  // ✅ NEW: Get bookings for specific parking (Land Owner)
+  static async getParkingBookings(filters) {
     const db = getDB();
-    await Promise.all([
-      db.collection(this.collection).createIndex({ user_id: 1 }), // Changed from userId to user_id
-      db.collection(this.collection).createIndex({ parking_id: 1 }), // Changed from parkingLotId to parking_id
-      db.collection(this.collection).createIndex({ status: 1 }),
-      db.collection(this.collection).createIndex({ start_time: 1 }), // Changed from startTime to start_time
-      db.collection(this.collection).createIndex({ created_at: 1 }),
-    ]);
+    const {
+      parkingId,
+      status,
+      startDate,
+      endDate,
+      limit = 50,
+      offset = 0,
+    } = filters;
+
+    try {
+      // Build query filter
+      const filter = { parking_id: new ObjectId(parkingId) };
+
+      // Add status filter
+      if (status && status !== "all") {
+        filter.status = status;
+      }
+
+      // Add date range filter
+      if (startDate || endDate) {
+        filter.created_at = {};
+        if (startDate) {
+          filter.created_at.$gte = new Date(startDate);
+        }
+        if (endDate) {
+          filter.created_at.$lte = new Date(endDate);
+        }
+      }
+
+      console.log("🔍 MongoDB filter:", JSON.stringify(filter, null, 2));
+
+      // Get total count
+      const total = await db.collection(this.collection).countDocuments(filter);
+      console.log("✅ Total bookings found:", total);
+
+      // Get bookings with pagination
+      const bookings = await db
+        .collection(this.collection)
+        .find(filter)
+        .sort({ created_at: -1 }) // Latest first
+        .limit(limit)
+        .skip(offset)
+        .toArray();
+
+      console.log("✅ Bookings retrieved:", bookings.length);
+
+      // Get user details for each booking
+      const userIds = [...new Set(bookings.map((b) => b.user_id))];
+      const users = await db
+        .collection("users")
+        .find({ _id: { $in: userIds } })
+        .toArray();
+
+      // Create user lookup map
+      const userMap = {};
+      users.forEach((user) => {
+        userMap[user._id.toString()] = user;
+      });
+
+      // Attach user data to bookings
+      const enrichedBookings = bookings.map((booking) => ({
+        ...booking,
+        user: userMap[booking.user_id.toString()] || null,
+      }));
+
+      // Calculate stats
+      const stats = await this.calculateParkingStats(parkingId);
+
+      return {
+        bookings: enrichedBookings,
+        total,
+        hasMore: offset + limit < total,
+        stats,
+      };
+    } catch (error) {
+      console.error("❌ getParkingBookings error:", error);
+      throw new Error(`Failed to get parking bookings: ${error.message}`);
+    }
+  }
+
+  // ✅ NEW: Calculate booking statistics for parking
+  static async calculateParkingStats(parkingId) {
+    const db = getDB();
+
+    try {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+
+      // Get all bookings for this parking
+      const allBookings = await db
+        .collection(this.collection)
+        .find({ parking_id: new ObjectId(parkingId) })
+        .toArray();
+
+      // Calculate counts by status
+      const stats = {
+        totalBookings: allBookings.length,
+        pendingCount: 0,
+        confirmedCount: 0,
+        activeCount: 0,
+        completedCount: 0,
+        cancelledCount: 0,
+        totalRevenue: 0,
+        todayBookings: 0,
+      };
+
+      allBookings.forEach((booking) => {
+        // Count by status
+        switch (booking.status) {
+          case "pending":
+            stats.pendingCount++;
+            break;
+          case "confirmed":
+            stats.confirmedCount++;
+            break;
+          case "active":
+            stats.activeCount++;
+            break;
+          case "completed":
+            stats.completedCount++;
+            stats.totalRevenue += booking.cost; // Only count completed bookings for revenue
+            break;
+          case "cancelled":
+            stats.cancelledCount++;
+            break;
+        }
+
+        // Count today's bookings
+        const bookingDate = new Date(booking.created_at);
+        if (bookingDate >= today && bookingDate < tomorrow) {
+          stats.todayBookings++;
+        }
+      });
+
+      return stats;
+    } catch (error) {
+      console.error("❌ Calculate parking stats error:", error);
+      return {
+        totalBookings: 0,
+        pendingCount: 0,
+        confirmedCount: 0,
+        activeCount: 0,
+        completedCount: 0,
+        cancelledCount: 0,
+        totalRevenue: 0,
+        todayBookings: 0,
+      };
+    }
   }
 
   static async extend(id, additionalDuration, additionalCost) {
