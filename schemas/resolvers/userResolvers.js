@@ -1,7 +1,10 @@
 import { User } from "../../models/User.js";
+import { Parking } from "../../models/Parking.js";
+import { Booking } from "../../models/Booking.js";
 import { GraphQLError } from "graphql";
 import { generateToken } from "../../helpers/jwt.js";
 import { verifyGoogleToken } from "../../helpers/googleAuth.js";
+import { getDB } from "../../config/db.js";
 
 function validateEmail(email) {
   const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,24 +33,166 @@ export const userResolvers = {
           extensions: { code: "UNAUTHENTICATED" },
         });
 
-      // Return mock data for now - can be enhanced later with real statistics
-      return {
-        totalParkingLots: 5,
-        parkingLotsChange: 2,
-        monthlyEarnings: 1500000,
-        earningsChange: 150000,
-        activeBookings: 12,
-        bookingsChange: 3,
-        totalUsers: 150,
-        usersChange: 25,
-        platformRevenue: 750000,
-        revenueChange: 75000,
-        pendingApprovals: 3,
-        totalBookings: 45,
-        totalSpent: 300000,
-        spentChange: 50000,
-        walletChange: 25000,
-      };
+      const db = getDB();
+
+      try {
+        // Base stats object
+        let stats = {
+          totalParkingLots: 0,
+          parkingLotsChange: 0,
+          monthlyEarnings: 0,
+          earningsChange: 0,
+          activeBookings: 0,
+          bookingsChange: 0,
+          totalUsers: 0,
+          usersChange: 0,
+          platformRevenue: 0,
+          revenueChange: 0,
+          pendingApprovals: 0,
+          totalBookings: 0,
+          totalSpent: 0,
+          spentChange: 0,
+          walletChange: 0,
+        };
+
+        // Role-based statistics
+        switch (user.role) {
+          case "admin":
+            // Admin sees platform-wide statistics
+            const totalUsers = await db.collection("users").countDocuments();
+            const totalParkingLots = await db
+              .collection("parkings")
+              .countDocuments({ is_deleted: { $ne: true } });
+            const totalBookings = await db
+              .collection("bookings")
+              .countDocuments();
+            const activeBookings = await db
+              .collection("bookings")
+              .countDocuments({
+                status: { $in: ["pending", "confirmed", "active"] },
+              });
+            const pendingApprovals = await db
+              .collection("parkings")
+              .countDocuments({
+                status: "pending",
+              });
+
+            // Calculate platform revenue (total from completed bookings)
+            const revenueAggregation = await db
+              .collection("bookings")
+              .aggregate([
+                { $match: { status: { $in: ["completed", "paid"] } } },
+                {
+                  $group: { _id: null, totalRevenue: { $sum: "$total_price" } },
+                },
+              ])
+              .toArray();
+            const platformRevenue = revenueAggregation[0]?.totalRevenue || 0;
+
+            stats = {
+              ...stats,
+              totalUsers,
+              totalParkingLots,
+              totalBookings,
+              activeBookings,
+              pendingApprovals,
+              platformRevenue,
+              usersChange: Math.floor(totalUsers * 0.1), // 10% growth placeholder
+              parkingLotsChange: Math.floor(totalParkingLots * 0.05), // 5% growth placeholder
+              revenueChange: Math.floor(platformRevenue * 0.15), // 15% growth placeholder
+            };
+            break;
+
+          case "landowner":
+            // Landowner sees their own parking statistics
+            const ownerStats = await Parking.getOwnerStats(user._id);
+            const userParkings = await db
+              .collection("parkings")
+              .find({
+                owner_id: user._id,
+                is_deleted: { $ne: true },
+              })
+              .toArray();
+
+            const userParkingIds = userParkings.map((p) => p._id);
+            const ownerActiveBookings = await db
+              .collection("bookings")
+              .countDocuments({
+                parking_id: { $in: userParkingIds },
+                status: { $in: ["pending", "confirmed", "active"] },
+              });
+
+            const ownerTotalBookings = await db
+              .collection("bookings")
+              .countDocuments({
+                parking_id: { $in: userParkingIds },
+              });
+
+            stats = {
+              ...stats,
+              totalParkingLots: userParkings.length,
+              monthlyEarnings: ownerStats.totalIncome,
+              activeBookings: ownerActiveBookings,
+              totalBookings: ownerTotalBookings,
+              walletChange: ownerStats.currentBalance,
+              parkingLotsChange: Math.max(0, userParkings.length - 1), // At least 0
+              earningsChange: Math.floor(ownerStats.totalIncome * 0.2), // 20% growth placeholder
+              bookingsChange: Math.floor(ownerActiveBookings * 0.1), // 10% growth placeholder
+            };
+            break;
+
+          case "user":
+          default:
+            // Regular user sees their own booking statistics
+            const userBookings = await db
+              .collection("bookings")
+              .find({
+                user_id: user._id,
+              })
+              .toArray();
+
+            const userActiveBookings = userBookings.filter((b) =>
+              ["pending", "confirmed", "active"].includes(b.status)
+            ).length;
+
+            const userTotalSpent = userBookings
+              .filter((b) => ["completed", "paid"].includes(b.status))
+              .reduce((sum, booking) => sum + (booking.total_price || 0), 0);
+
+            stats = {
+              ...stats,
+              activeBookings: userActiveBookings,
+              totalBookings: userBookings.length,
+              totalSpent: userTotalSpent,
+              walletChange: user.saldo || 0,
+              bookingsChange: Math.floor(userActiveBookings * 0.1), // 10% growth placeholder
+              spentChange: Math.floor(userTotalSpent * 0.15), // 15% growth placeholder
+            };
+            break;
+        }
+
+        return stats;
+      } catch (error) {
+        console.error("Error getting dashboard stats:", error);
+        // Fallback to basic stats if there's an error
+        return {
+          totalParkingLots: 0,
+          parkingLotsChange: 0,
+          monthlyEarnings: 0,
+          earningsChange: 0,
+          activeBookings: 0,
+          bookingsChange: 0,
+          totalUsers: 0,
+          usersChange: 0,
+          platformRevenue: 0,
+          revenueChange: 0,
+          pendingApprovals: 0,
+          totalBookings: 0,
+          totalSpent: 0,
+          spentChange: 0,
+          walletChange: 0,
+        };
+      }
     },
     getRecentActivity: async (_, { limit = 10 }, { user }) => {
       if (!user)
@@ -55,20 +200,238 @@ export const userResolvers = {
           extensions: { code: "UNAUTHENTICATED" },
         });
 
-      // Return mock data for now - can be enhanced later with real activity data
-      return [
-        {
-          id: "1",
-          type: "user_registered",
-          title: "Welcome to Parkirin!",
-          description: "Your account has been successfully created",
-          timestamp: new Date().toISOString(),
-          location: null,
-          bookingId: null,
-          parkingId: null,
-          chatId: null,
-        },
-      ];
+      const db = getDB();
+
+      try {
+        let activities = [];
+
+        switch (user.role) {
+          case "admin":
+            // Admin sees platform-wide activities
+            const recentBookings = await db
+              .collection("bookings")
+              .find({})
+              .sort({ created_at: -1 })
+              .limit(limit)
+              .toArray();
+
+            // Get user and parking info for bookings
+            const userIds = [...new Set(recentBookings.map((b) => b.user_id))];
+            const parkingIds = [
+              ...new Set(recentBookings.map((b) => b.parking_id)),
+            ];
+
+            const users = await db
+              .collection("users")
+              .find({ _id: { $in: userIds } })
+              .toArray();
+            const parkings = await db
+              .collection("parkings")
+              .find({ _id: { $in: parkingIds } })
+              .toArray();
+
+            const userMap = Object.fromEntries(
+              users.map((u) => [u._id.toString(), u])
+            );
+            const parkingMap = Object.fromEntries(
+              parkings.map((p) => [p._id.toString(), p])
+            );
+
+            activities = recentBookings.map((booking) => {
+              const bookingUser = userMap[booking.user_id.toString()];
+              const parking = parkingMap[booking.parking_id.toString()];
+
+              return {
+                id: booking._id.toString(),
+                type: "booking_created",
+                title: `New booking by ${bookingUser?.name || "Unknown User"}`,
+                description: `Booking at ${
+                  parking?.name || "Unknown Parking"
+                } - Status: ${booking.status}`,
+                timestamp: booking.created_at.toISOString(),
+                location: parking?.address || null,
+                bookingId: booking._id.toString(),
+                parkingId: booking.parking_id.toString(),
+                chatId: null,
+              };
+            });
+            break;
+
+          case "landowner":
+            // Landowner sees activities related to their parkings
+            const ownerParkings = await db
+              .collection("parkings")
+              .find({ owner_id: user._id, is_deleted: { $ne: true } })
+              .toArray();
+
+            const ownerParkingIds = ownerParkings.map((p) => p._id);
+
+            const ownerBookings = await db
+              .collection("bookings")
+              .find({ parking_id: { $in: ownerParkingIds } })
+              .sort({ created_at: -1 })
+              .limit(limit)
+              .toArray();
+
+            // Get user info for bookings
+            const bookingUserIds = [
+              ...new Set(ownerBookings.map((b) => b.user_id)),
+            ];
+            const bookingUsers = await db
+              .collection("users")
+              .find({ _id: { $in: bookingUserIds } })
+              .toArray();
+
+            const bookingUserMap = Object.fromEntries(
+              bookingUsers.map((u) => [u._id.toString(), u])
+            );
+            const ownerParkingMap = Object.fromEntries(
+              ownerParkings.map((p) => [p._id.toString(), p])
+            );
+
+            activities = ownerBookings.map((booking) => {
+              const bookingUser = bookingUserMap[booking.user_id.toString()];
+              const parking = ownerParkingMap[booking.parking_id.toString()];
+
+              let activityType = "booking_created";
+              let title = `New booking received`;
+
+              switch (booking.status) {
+                case "confirmed":
+                  activityType = "booking_confirmed";
+                  title = "Booking confirmed";
+                  break;
+                case "active":
+                  activityType = "booking_active";
+                  title = "Customer checked in";
+                  break;
+                case "completed":
+                  activityType = "booking_completed";
+                  title = "Booking completed";
+                  break;
+                case "cancelled":
+                  activityType = "booking_cancelled";
+                  title = "Booking cancelled";
+                  break;
+              }
+
+              return {
+                id: booking._id.toString(),
+                type: activityType,
+                title: title,
+                description: `${bookingUser?.name || "Customer"} at ${
+                  parking?.name || "your parking"
+                } - Rp ${(booking.total_price || 0).toLocaleString()}`,
+                timestamp: booking.created_at.toISOString(),
+                location: parking?.address || null,
+                bookingId: booking._id.toString(),
+                parkingId: booking.parking_id.toString(),
+                chatId: null,
+              };
+            });
+            break;
+
+          case "user":
+          default:
+            // Regular user sees their own activities
+            const userBookings = await db
+              .collection("bookings")
+              .find({ user_id: user._id })
+              .sort({ created_at: -1 })
+              .limit(limit)
+              .toArray();
+
+            // Get parking info for user bookings
+            const userParkingIds = [
+              ...new Set(userBookings.map((b) => b.parking_id)),
+            ];
+            const userParkings = await db
+              .collection("parkings")
+              .find({ _id: { $in: userParkingIds } })
+              .toArray();
+
+            const userParkingMap = Object.fromEntries(
+              userParkings.map((p) => [p._id.toString(), p])
+            );
+
+            activities = userBookings.map((booking) => {
+              const parking = userParkingMap[booking.parking_id.toString()];
+
+              let activityType = "booking_created";
+              let title = "Booking created";
+
+              switch (booking.status) {
+                case "confirmed":
+                  activityType = "booking_confirmed";
+                  title = "Booking confirmed";
+                  break;
+                case "active":
+                  activityType = "booking_active";
+                  title = "Checked in successfully";
+                  break;
+                case "completed":
+                  activityType = "booking_completed";
+                  title = "Parking completed";
+                  break;
+                case "cancelled":
+                  activityType = "booking_cancelled";
+                  title = "Booking cancelled";
+                  break;
+              }
+
+              return {
+                id: booking._id.toString(),
+                type: activityType,
+                title: title,
+                description: `${parking?.name || "Parking"} - ${
+                  booking.duration
+                }h - Rp ${(booking.total_price || 0).toLocaleString()}`,
+                timestamp: booking.created_at.toISOString(),
+                location: parking?.address || null,
+                bookingId: booking._id.toString(),
+                parkingId: booking.parking_id.toString(),
+                chatId: null,
+              };
+            });
+            break;
+        }
+
+        // If no activities found, add a welcome message
+        if (activities.length === 0) {
+          activities.push({
+            id: "welcome",
+            type: "user_registered",
+            title: "Welcome to Parkirin!",
+            description:
+              "Your account has been successfully created. Start exploring parking options near you.",
+            timestamp: user.created_at
+              ? user.created_at.toISOString()
+              : new Date().toISOString(),
+            location: null,
+            bookingId: null,
+            parkingId: null,
+            chatId: null,
+          });
+        }
+
+        return activities;
+      } catch (error) {
+        console.error("Error getting recent activity:", error);
+        // Fallback to welcome message if there's an error
+        return [
+          {
+            id: "welcome",
+            type: "user_registered",
+            title: "Welcome to Parkirin!",
+            description: "Your account has been successfully created",
+            timestamp: new Date().toISOString(),
+            location: null,
+            bookingId: null,
+            parkingId: null,
+            chatId: null,
+          },
+        ];
+      }
     },
 
     getUsersByRole: async (_, { role }, { user }) => {
