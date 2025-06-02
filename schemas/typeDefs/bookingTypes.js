@@ -39,6 +39,13 @@ export const bookingTypes = `#graphql
     booking: Booking!
   }
 
+  type CancelBookingResponse {
+    booking: Booking!
+    user: User
+    refund_amount: Float
+    message: String
+  }
+
   type Query {
     getBooking(id: ID!): Booking!
     getMyActiveBookings: [Booking!]!
@@ -48,7 +55,7 @@ export const bookingTypes = `#graphql
 
   type Mutation {
     createBooking(input: CreateBookingInput!): BookingResponse!
-    cancelBooking(id: ID!): Booking!
+    cancelBooking(id: ID!): CancelBookingResponse!
     confirmBooking(id: ID!): Booking!
     extendBooking(id: ID!, additionalDuration: Int!): Booking!
     

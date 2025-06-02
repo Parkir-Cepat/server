@@ -214,89 +214,32 @@ export const bookingResolvers = {
           `💰 Calculated cost: ${pricePerHour} x ${duration} hours = ${totalCost}`
         );
 
-        // Check user balance
-        const currentUser = await User.findById(user._id);
-        if (currentUser.saldo < totalCost) {
-          throw new Error(
-            `Saldo tidak mencukupi. Dibutuhkan Rp ${totalCost.toLocaleString()}, saldo Anda Rp ${currentUser.saldo.toLocaleString()}`
-          );
-        }
-
-        // Create booking with normalized vehicle type
+        // ✅ FIXED: Create booking with PENDING status, NO payment yet
         const booking = await Booking.create({
           user_id: user._id,
           parking_id,
           vehicle_type: normalizedVehicleType,
-          start_time: startDateTime.toISOString(), // Use parsed datetime
+          start_time: startDateTime.toISOString(),
           duration,
+          cost: totalCost, // Store cost for later payment
+          status: "pending", // Pending until payment
         });
 
-        // Deduct user balance
-        await User.updateSaldo(user._id, -totalCost);
+        console.log(
+          `✅ Booking created: ${booking._id} for user ${user._id} with PENDING status`
+        );
 
-        // Create payment transaction
-        await Transaction.create({
-          user_id: user._id,
-          booking_id: booking._id,
-          type: "payment",
-          amount: totalCost,
-          payment_method: "saldo",
-          status: "success",
-          transaction_id: `PAY-${Date.now()}`,
-          description: `Pembayaran booking parkir #${booking._id}`,
-        });
-
-        // Create saldo debit record
-        await Transaction.create({
-          user_id: user._id,
-          type: "saldo_debit",
-          amount: totalCost,
-          payment_method: "booking_payment",
-          status: "success",
-          transaction_id: `DEBIT-${Date.now()}`,
-          description: `Pembayaran booking parkir menggunakan saldo`,
-        });
-
-        // Publish event untuk subscription
-        pubsub.publish("BOOKING_STATUS_CHANGED", {
-          bookingStatusChanged: booking,
-        });
-
-        console.log(`✅ Booking created: ${booking._id} for user ${user._id}`);
-
-        // Return with additional data
         return {
           booking: booking,
           qr_code: null,
           total_cost: totalCost,
-          message: "Booking berhasil dibuat",
+          message:
+            "Booking berhasil dibuat. Silakan lakukan pembayaran untuk konfirmasi.",
         };
       } catch (error) {
         console.error("❌ Create booking error:", error);
         throw new Error(`Gagal membuat booking: ${error.message}`);
       }
-    },
-
-    // Cancel booking
-    cancelBooking: async (_, { id }, { user }) => {
-      ensureAuth(user);
-
-      const booking = await Booking.findById(id);
-      if (!booking) throw new Error("Booking tidak ditemukan");
-
-      if (booking.user_id.toString() !== user._id.toString()) {
-        throw new Error("Anda tidak memiliki akses");
-      }
-
-      const updatedBooking = await Booking.updateStatus(id, "cancelled");
-
-      // Publish event untuk subscription
-      await publish(EVENTS.BOOKING.UPDATED, {
-        bookingUpdated: updatedBooking,
-        userId: booking.user_id,
-      });
-
-      return updatedBooking;
     },
 
     // Confirm booking
@@ -306,41 +249,165 @@ export const bookingResolvers = {
       const booking = await Booking.findById(id);
       if (!booking) throw new Error("Booking tidak ditemukan");
 
-      const updatedBooking = await Booking.updateStatus(id, "confirmed");
+      if (booking.user_id.toString() !== user._id.toString()) {
+        throw new Error("Anda tidak memiliki akses");
+      }
 
-      // Publish event untuk subscription
-      await publish(EVENTS.BOOKING.UPDATED, {
-        bookingUpdated: updatedBooking,
-        userId: booking.user_id,
-      });
+      // ✅ Only allow payment for pending bookings
+      if (booking.status !== "pending") {
+        throw new Error(
+          `Booking dengan status "${booking.status}" tidak dapat dibayar`
+        );
+      }
 
-      return updatedBooking;
+      // ✅ Check user balance BEFORE payment
+      const currentUser = await User.findById(user._id);
+      if (currentUser.saldo < booking.cost) {
+        throw new Error(
+          `Saldo tidak mencukupi. Dibutuhkan Rp ${booking.cost.toLocaleString()}, saldo Anda Rp ${currentUser.saldo.toLocaleString()}`
+        );
+      }
+
+      try {
+        // ✅ NOW deduct saldo when confirming payment
+        await User.updateSaldo(user._id, -booking.cost);
+
+        // ✅ Create payment transaction
+        await Transaction.create({
+          user_id: user._id,
+          booking_id: booking._id,
+          type: "payment",
+          amount: booking.cost,
+          payment_method: "saldo",
+          status: "success",
+          transaction_id: `PAY-${Date.now()}`,
+          description: `Pembayaran booking parkir #${booking._id}`,
+        });
+
+        // ✅ Create saldo debit record
+        await Transaction.create({
+          user_id: user._id,
+          type: "saldo_debit",
+          amount: booking.cost,
+          payment_method: "booking_payment",
+          status: "success",
+          transaction_id: `DEBIT-${Date.now()}`,
+          description: `Pembayaran booking parkir menggunakan saldo`,
+        });
+
+        // ✅ Update booking status to confirmed
+        const updatedBooking = await Booking.updateStatus(id, "confirmed");
+
+        console.log(`✅ Booking ${id} confirmed and paid`);
+
+        return {
+          ...updatedBooking,
+          user: await User.findById(user._id), // Return updated user with new saldo
+        };
+      } catch (error) {
+        console.error("❌ Confirm booking error:", error);
+        throw new Error(`Gagal konfirmasi booking: ${error.message}`);
+      }
     },
 
-    // Perpanjang durasi booking
-    extendBooking: async (_, { id, additionalDuration }, { user }) => {
-      ensureAuth(user);
+    // Cancel booking with proper validation and refund
+    cancelBooking: async (_, { id }, { user }) => {
+      try {
+        ensureAuth(user);
 
-      const booking = await Booking.findById(id);
-      if (!booking) throw new Error("Booking tidak ditemukan");
+        console.log(`🔍 Cancel booking request - ID: ${id}, User: ${user._id}`);
 
-      // Hitung biaya tambahan
-      const parking = await Parking.findById(booking.parking_id);
-      const additionalCost = parking.tariff * additionalDuration;
+        // ✅ Basic validation
+        if (!ObjectId.isValid(id)) {
+          throw new Error("Format ID booking tidak valid");
+        }
 
-      const updatedBooking = await Booking.extend(
-        id,
-        additionalDuration,
-        additionalCost
-      );
+        // ✅ Find and validate booking
+        const booking = await Booking.findById(id);
+        if (!booking) {
+          throw new Error("Booking tidak ditemukan");
+        }
 
-      // Publish event untuk subscription
-      await publish(EVENTS.BOOKING.UPDATED, {
-        bookingUpdated: updatedBooking,
-        userId: booking.user_id,
-      });
+        // ✅ Check ownership
+        if (booking.user_id.toString() !== user._id.toString()) {
+          throw new Error("Anda tidak memiliki akses ke booking ini");
+        }
 
-      return updatedBooking;
+        // ✅ Check status
+        if (booking.status !== "pending") {
+          throw new Error(
+            `Tidak dapat membatalkan booking dengan status "${booking.status}". Hanya booking dengan status "pending" yang dapat dibatalkan.`
+          );
+        }
+
+        console.log(`✅ Validation passed - proceeding with cancellation`);
+
+        // ✅ Cancel the booking using updateStatus method instead
+        const updatedBooking = await Booking.updateStatus(id, "cancelled");
+
+        if (!updatedBooking) {
+          throw new Error("Gagal mengupdate status booking");
+        }
+
+        // ✅ Get current user data
+        const currentUser = await User.findById(user._id);
+
+        // ✅ Create cancellation transaction record
+        try {
+          await Transaction.create({
+            user_id: user._id,
+            booking_id: booking._id,
+            type: "cancellation",
+            amount: 0,
+            payment_method: "booking_cancel",
+            status: "success",
+            transaction_id: `CANCEL-${Date.now()}`,
+            description: `Pembatalan booking parkir #${booking._id} (status pending)`,
+          });
+          console.log(`✅ Cancellation transaction recorded`);
+        } catch (transactionError) {
+          console.log(
+            `⚠️ Failed to create transaction record:`,
+            transactionError
+          );
+        }
+
+        console.log(`✅ Booking ${id} cancelled successfully`);
+
+        // ✅ Return proper CancelBookingResponse structure
+        return {
+          _id: updatedBooking._id.toString(),
+          status: "cancelled",
+          refund_amount: 0,
+          message:
+            "Booking berhasil dibatalkan. Tidak ada biaya yang dikenakan karena pembayaran belum dilakukan.",
+          user: currentUser || { _id: user._id, saldo: 0 },
+          booking: {
+            _id: updatedBooking._id,
+            user_id: updatedBooking.user_id,
+            parking_id: updatedBooking.parking_id,
+            vehicle_type: updatedBooking.vehicle_type,
+            start_time: updatedBooking.start_time,
+            duration: updatedBooking.duration,
+            cost: updatedBooking.cost,
+            status: "cancelled",
+            created_at: updatedBooking.created_at,
+            updated_at: updatedBooking.updated_at || new Date(),
+            qr_code: updatedBooking.qr_code || null,
+            entry_qr: updatedBooking.entry_qr || null,
+            exit_qr: updatedBooking.exit_qr || null,
+          },
+        };
+      } catch (error) {
+        console.error("❌ Cancel booking error:", error);
+        throw new GraphQLError(`Gagal membatalkan booking: ${error.message}`, {
+          extensions: {
+            code: "BOOKING_CANCELLATION_FAILED",
+            bookingId: id,
+            userId: user?._id,
+          },
+        });
+      }
     },
 
     // Generate QR Code untuk booking
@@ -513,8 +580,9 @@ export const bookingResolvers = {
         throw new Error(`Gagal scan exit QR: ${error.message}`);
       }
     },
-  },
+  }, // ✅ End Mutation here
 
+  // ✅ Move Subscription out of Mutation
   Subscription: {
     // Subscription untuk status booking berubah
     bookingStatusChanged: {
@@ -525,6 +593,7 @@ export const bookingResolvers = {
     },
   },
 
+  // ✅ Keep Booking resolver at the same level
   Booking: {
     // Resolve user yang membuat booking
     user: async (booking) => {

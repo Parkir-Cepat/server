@@ -216,7 +216,7 @@ export class Booking {
       {
         $set: {
           status,
-          updatedAt: new Date(),
+          updated_at: new Date(), // ✅ Fixed: use updated_at consistently
         },
       },
       { returnDocument: "after" }
@@ -230,10 +230,10 @@ export class Booking {
     return await db
       .collection(this.collection)
       .find({
-        user_id: new ObjectId(userId), // Changed from userId to user_id
+        user_id: new ObjectId(userId),
         status: { $in: ["pending", "confirmed"] },
       })
-      .sort({ start_time: -1 }) // Changed from startTime to start_time
+      .sort({ start_time: -1 })
       .toArray();
   }
 
@@ -242,10 +242,10 @@ export class Booking {
     return await db
       .collection(this.collection)
       .find({
-        user_id: new ObjectId(userId), // Changed from userId to user_id
+        user_id: new ObjectId(userId),
         status: { $in: ["completed", "cancelled"] },
       })
-      .sort({ start_time: -1 }) // Changed from startTime to start_time
+      .sort({ start_time: -1 })
       .toArray();
   }
 
@@ -606,6 +606,55 @@ export class Booking {
     }
   }
 
+  static async cancelPendingBooking(id) {
+    const db = getDB();
+
+    try {
+      console.log(`🔍 Cancelling booking with ID: ${id}`);
+
+      // Find the booking first
+      const booking = await this.findById(id);
+      if (!booking) {
+        throw new Error("Booking tidak ditemukan");
+      }
+
+      console.log(`🔍 Found booking with status: ${booking.status}`);
+
+      // Only allow cancellation for pending bookings
+      if (booking.status !== "pending") {
+        throw new Error(
+          `Booking dengan status "${booking.status}" tidak dapat dibatalkan`
+        );
+      }
+
+      // Update status to cancelled
+      const result = await db.collection(this.collection).findOneAndUpdate(
+        { _id: new ObjectId(id) },
+        {
+          $set: {
+            status: "cancelled",
+            updated_at: new Date(),
+            cancelled_at: new Date(),
+          },
+        },
+        { returnDocument: "after" }
+      );
+
+      if (!result) {
+        throw new Error("Gagal mengupdate status booking");
+      }
+
+      console.log(`✅ Booking ${id} cancelled successfully`);
+
+      // For pending bookings, no need to return parking slot since it wasn't reserved
+      return result;
+    } catch (error) {
+      console.error(`❌ Error in cancelPendingBooking:`, error);
+      throw error;
+    }
+  }
+
+  // ✅ Keep existing cancel method for confirmed/active bookings
   static async cancel(id) {
     const db = getDB();
     const booking = await this.findById(id);
@@ -624,19 +673,23 @@ export class Booking {
       {
         $set: {
           status: "cancelled",
-          updated_at: new Date(), // Changed from updatedAt to updated_at
+          updated_at: new Date(),
+          cancelled_at: new Date(),
         },
       },
       { returnDocument: "after" }
     );
 
-    // Kembalikan slot parkir
-    await db
-      .collection("parkings") // Changed from parking_lots to parkings
-      .updateOne(
-        { _id: booking.parking_id }, // Changed from parkingLotId to parking_id
-        { $inc: { [`available.${booking.vehicle_type}`]: 1 } } // Return specific vehicle slot
-      );
+    // Only return parking slot if it was confirmed (slot was reserved)
+    if (booking.status === "confirmed" || booking.status === "active") {
+      await db
+        .collection("parkings")
+        .updateOne(
+          { _id: booking.parking_id },
+          { $inc: { [`available.${booking.vehicle_type}`]: 1 } }
+        );
+      console.log(`🚗 Parking slot returned for ${booking.vehicle_type}`);
+    }
 
     return result;
   }
