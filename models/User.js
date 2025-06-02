@@ -1,10 +1,10 @@
-import { getDB } from '../config/db.js';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { ObjectId } from 'mongodb';
+import { getDB } from "../config/db.js";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { ObjectId } from "mongodb";
 
 export class User {
-  static collection = 'users';
+  static collection = "users";
 
   /**
    * Setup indexes untuk collection
@@ -12,10 +12,12 @@ export class User {
   static async setupIndexes() {
     const db = getDB();
     await Promise.all([
-      db.collection(this.collection).createIndex({ email: 1 }, { unique: true }),
+      db
+        .collection(this.collection)
+        .createIndex({ email: 1 }, { unique: true }),
       db.collection(this.collection).createIndex({ role: 1 }),
       db.collection(this.collection).createIndex({ created_at: 1 }),
-      db.collection(this.collection).createIndex({ google_id: 1 })
+      db.collection(this.collection).createIndex({ google_id: 1 }),
     ]);
   }
 
@@ -27,7 +29,7 @@ export class User {
   static async findById(id) {
     const db = getDB();
     let queryId = id;
-    if (typeof id === 'string' && /^[a-fA-F0-9]{24}$/.test(id)) {
+    if (typeof id === "string" && /^[a-fA-F0-9]{24}$/.test(id)) {
       queryId = new ObjectId(id);
     }
     return await db.collection(this.collection).findOne({ _id: queryId });
@@ -62,12 +64,13 @@ export class User {
     const db = getDB();
     const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: id },
-      { 
-        $set: { 
+      {
+        $set: {
           lastLogin: new Date(),
-          updatedAt: new Date()
-        }
-      },      { returnDocument: 'after' }
+          updatedAt: new Date(),
+        },
+      },
+      { returnDocument: "after" }
     );
     return result;
   }
@@ -79,20 +82,20 @@ export class User {
    */
   static async create(userData) {
     const db = getDB();
-    const { 
-      email, 
-      password, 
-      name, 
-      role = 'user',
+    const {
+      email,
+      password,
+      name,
+      role = "user",
       googleId = null,
       avatar = null,
-      isEmailVerified = false
+      isEmailVerified = false,
     } = userData;
 
     // Hash password jika ada dan bukan dari Google Auth
     let hashedPassword = null;
     if (password) {
-      if (!password.startsWith('GOOGLE_AUTH_')) {
+      if (!password.startsWith("GOOGLE_AUTH_")) {
         const salt = await bcrypt.genSalt(10);
         hashedPassword = await bcrypt.hash(password, salt);
       } else {
@@ -102,14 +105,15 @@ export class User {
 
     // Generate random password for Google Auth users if no password provided
     if (!hashedPassword && googleId) {
-      const randomPassword = 'GOOGLE_AUTH_' + Math.random().toString(36).substring(7);
+      const randomPassword =
+        "GOOGLE_AUTH_" + Math.random().toString(36).substring(7);
       const salt = await bcrypt.genSalt(10);
       hashedPassword = await bcrypt.hash(randomPassword, salt);
     }
 
     // Throw error if no password and not Google Auth
     if (!hashedPassword && !googleId) {
-      throw new Error('Password is required for non-Google Auth users');
+      throw new Error("Password is required for non-Google Auth users");
     }
 
     const result = await db.collection(this.collection).insertOne({
@@ -121,7 +125,7 @@ export class User {
       google_id: googleId,
       avatar,
       created_at: new Date(),
-      updated_at: new Date()
+      updated_at: new Date(),
     });
 
     return {
@@ -146,18 +150,21 @@ export class User {
     const db = getDB();
     const updateData = {
       ...updates,
-      updated_at: new Date()
+      updated_at: new Date(),
     };
 
     // Jika ada update password, hash dulu
     if (updates.password) {
       const salt = await bcrypt.genSalt(10);
       updateData.password = await bcrypt.hash(updates.password, salt);
-    }    const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: id },
-      { $set: updateData },
-      { returnDocument: 'after' }
-    );
+    }
+    const result = await db
+      .collection(this.collection)
+      .findOneAndUpdate(
+        { _id: id },
+        { $set: updateData },
+        { returnDocument: "after" }
+      );
 
     return result;
   }
@@ -172,14 +179,88 @@ export class User {
     const db = getDB();
     const result = await db.collection(this.collection).findOneAndUpdate(
       { _id: new ObjectId(id) },
-      { 
+      {
         $inc: { saldo: amount },
-        $set: { updated_at: new Date() }
+        $set: { updated_at: new Date() },
       },
-      { returnDocument: 'after' }
+      { returnDocument: "after" }
     );
 
     return result;
+  }
+
+  /**
+   * Update saldo user dengan enhanced logging
+   * @param {string} userId - ID user
+   * @param {number} amount - Jumlah perubahan saldo (positif untuk penambahan, negatif untuk pengurangan)
+   * @returns {Promise<Object>} Updated user document
+   */
+  static async updateSaldo(userId, amount) {
+    try {
+      console.log(`💰 Updating saldo for user ${userId}, amount: ${amount}`);
+
+      const db = getDB();
+
+      // Convert userId to ObjectId if it's a string
+      let objectId;
+      if (typeof userId === "string") {
+        objectId = new ObjectId(userId);
+      } else {
+        objectId = userId;
+      }
+
+      const user = await db
+        .collection(this.collection)
+        .findOne({ _id: objectId });
+
+      if (!user) {
+        console.error(`❌ User not found: ${userId}`);
+        throw new Error("User not found for saldo update");
+      }
+
+      const currentSaldo = user.saldo || 0;
+      const newSaldo = currentSaldo + amount;
+
+      console.log(`💰 Saldo update: ${currentSaldo} + ${amount} = ${newSaldo}`);
+
+      if (newSaldo < 0) {
+        console.error(
+          `❌ Insufficient balance: ${currentSaldo} + ${amount} = ${newSaldo}`
+        );
+        throw new Error("Insufficient balance");
+      }
+
+      // Use updateOne instead of findOneAndUpdate for more reliable results
+      const updateResult = await db.collection(this.collection).updateOne(
+        { _id: objectId },
+        {
+          $set: {
+            saldo: newSaldo,
+            updated_at: new Date(),
+          },
+        }
+      );
+
+      console.log(`🔍 Update result:`, updateResult);
+
+      if (updateResult.modifiedCount === 0) {
+        console.error(`❌ Failed to update user saldo for user: ${userId}`);
+        throw new Error("Failed to update user saldo");
+      }
+
+      // Fetch the updated user
+      const updatedUser = await db
+        .collection(this.collection)
+        .findOne({ _id: objectId });
+
+      console.log(
+        `✅ Saldo updated successfully for user ${userId}: ${updatedUser.saldo}`
+      );
+      return updatedUser;
+    } catch (error) {
+      console.error("❌ Error updating user saldo:", error);
+      throw error;
+    }
   }
 
   /**
@@ -199,13 +280,37 @@ export class User {
    */
   static generateAuthToken(user) {
     return jwt.sign(
-      { 
+      {
         id: user._id,
         email: user.email,
-        role: user.role
+        role: user.role,
       },
       process.env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: "7d" }
     );
   }
-} 
+
+  /**
+   * Find users by role
+   * @param {Object} filter - Filter criteria
+   * @returns {Promise<Array<Object>>} Array of user documents
+   */
+  static async find(filter) {
+    const db = getDB();
+    return await db.collection(this.collection).find(filter).toArray();
+  }
+
+  /**
+   * Mencari multiple users berdasarkan array ID
+   * @param {Array<string>} ids - Array of user IDs
+   * @returns {Promise<Array<Object>>} Array of user documents
+   */
+  static async findByIds(ids) {
+    const db = getDB();
+    const objectIds = ids.map((id) => new ObjectId(id));
+    return await db
+      .collection(this.collection)
+      .find({ _id: { $in: objectIds } })
+      .toArray();
+  }
+}

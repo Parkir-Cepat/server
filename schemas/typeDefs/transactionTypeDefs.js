@@ -15,6 +15,8 @@ export const transactionTypeDefs = gql`
     amount: Float!
     status: String!
     qr_code_url: String
+    va_number: String
+    bank: String
     description: String
     createdAt: String
     updatedAt: String
@@ -24,6 +26,9 @@ export const transactionTypeDefs = gql`
     transaction: Transaction!
     payment_url: String
     qr_code: String
+    va_number: String
+    bank: String
+    simulation: Boolean
   }
 
   type PaymentSimulationResult {

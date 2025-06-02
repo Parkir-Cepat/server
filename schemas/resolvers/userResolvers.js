@@ -70,6 +70,22 @@ export const userResolvers = {
         },
       ];
     },
+
+    getUsersByRole: async (_, { role }, { user }) => {
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+
+      const allowedRoles = ["user", "landowner"];
+      if (!allowedRoles.includes(role)) {
+        throw new GraphQLError("Invalid role specified", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      return await User.find({ role });
+    },
   },
 
   Mutation: {

@@ -63,6 +63,7 @@ export const userTypes = `#graphql
   type Query {
     me: User
     getUserById(userId: ID!): User
+    getUsersByRole(role: String!): [User!]!
     getDashboardStats: DashboardStats!
     getRecentActivity(limit: Int): [RecentActivity!]!
   }
@@ -74,4 +75,4 @@ export const userTypes = `#graphql
     changePassword(oldPassword: String!, newPassword: String!): Boolean!
     googleAuth(token: String!): AuthPayload!
   }
-`; 
+`;
