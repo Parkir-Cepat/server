@@ -88,16 +88,24 @@ export const bookingTypes = `#graphql
     confirmBooking(id: ID!): Booking!
     extendBooking(id: ID!, additionalDuration: Int!): Booking!
     
-    # Updated QR mutations - more specific
+    # ✅ FIXED: Use existing QR mutations with proper return types
     generateEntryQR(bookingId: ID!): QRResponse!
     generateExitQR(bookingId: ID!): QRResponse!
-    scanEntryQR(qrCode: String!): BookingResponse!
-    scanExitQR(qrCode: String!): BookingResponse!
+    scanEntryQR(qrCode: String!): ScanQRResponse!
+    scanExitQR(qrCode: String!): ScanQRResponse!
     
     # Keep the old one for backward compatibility if needed
     generateBookingQR(bookingId: ID!): Booking!
     verifyQRCode(qrToken: String!): QRVerificationResult!
     generateParkingAccessQR(bookingId: ID!, type: String!): String!
+  }
+
+  # ✅ NEW: Response type for QR scanning
+  type ScanQRResponse {
+    success: Boolean!
+    message: String!
+    booking: Booking
+    overtimeCost: Float
   }
 
   type QRVerificationResult {
