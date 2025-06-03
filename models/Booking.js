@@ -225,15 +225,43 @@ export class Booking {
     return result;
   }
 
+  // ✅ FIXED: Rename and expand to get ALL user bookings, not just active ones
   static async getActiveBookings(userId) {
+    const db = getDB();
+    // ✅ CHANGED: Include all statuses except cancelled for "active" bookings list
+    return await db
+      .collection(this.collection)
+      .find({
+        user_id: new ObjectId(userId),
+        status: { $in: ["pending", "confirmed", "active", "completed"] }, // Include all relevant statuses
+      })
+      .sort({ created_at: -1 }) // ✅ CHANGED: Sort by created_at for better ordering
+      .toArray();
+  }
+
+  // ✅ ADD: New method specifically for truly active bookings (current parking sessions)
+  static async getCurrentActiveBookings(userId) {
     const db = getDB();
     return await db
       .collection(this.collection)
       .find({
         user_id: new ObjectId(userId),
-        status: { $in: ["pending", "confirmed"] },
+        status: { $in: ["confirmed", "active"] }, // Only confirmed and active
       })
       .sort({ start_time: -1 })
+      .toArray();
+  }
+
+  // ✅ ADD: Get all user bookings including cancelled
+  static async getAllUserBookings(userId) {
+    const db = getDB();
+    return await db
+      .collection(this.collection)
+      .find({
+        user_id: new ObjectId(userId),
+        // No status filter - get ALL bookings
+      })
+      .sort({ created_at: -1 })
       .toArray();
   }
 
