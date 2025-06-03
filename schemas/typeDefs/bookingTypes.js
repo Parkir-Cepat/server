@@ -15,6 +15,10 @@ export const bookingTypes = `#graphql
     qr_code: String
     entry_qr: String
     exit_qr: String
+    # ✅ ADD: Parking session tracking fields
+    parking_start_time: String
+    parking_end_time: String
+    remaining_time: Int
   }
 
   input CreateBookingInput {
@@ -66,6 +70,24 @@ export const bookingTypes = `#graphql
     message: String
   }
 
+  # ✅ NEW: Comprehensive booking flow support
+  type BookingFlowResult {
+    currentStatus: String!
+    nextAction: String!
+    availableActions: [String!]!
+    qrCodes: BookingQRCodes
+    timeRemaining: Int
+    overtimeWarning: Boolean
+  }
+
+  # ✅ NEW: All QR codes for a booking
+  type BookingQRCodes {
+    entryQR: String
+    exitQR: String
+    entryQRExpiry: String
+    exitQRExpiry: String
+  }
+
   type Query {
     getBooking(id: ID!): Booking!
     getMyActiveBookings: [Booking!]!
@@ -80,6 +102,9 @@ export const bookingTypes = `#graphql
       limit: Int
       offset: Int
     ): ParkingBookingsResult!
+
+    # ✅ NEW: Get complete booking flow status
+    getBookingFlow(bookingId: ID!): BookingFlowResult!
   }
 
   type Mutation {
@@ -88,19 +113,50 @@ export const bookingTypes = `#graphql
     confirmBooking(id: ID!): Booking!
     extendBooking(id: ID!, additionalDuration: Int!): Booking!
     
-    # ✅ FIXED: Use existing QR mutations with proper return types
+    # ✅ ENHANCED: QR mutations with proper flow handling
     generateEntryQR(bookingId: ID!): QRResponse!
     generateExitQR(bookingId: ID!): QRResponse!
-    scanEntryQR(qrCode: String!): ScanQRResponse!
-    scanExitQR(qrCode: String!): ScanQRResponse!
+    
+    # ✅ CRITICAL: Entry scan changes status confirmed → active + auto generates exit QR
+    scanEntryQR(qrCode: String!): ScanEntryQRResponse!
+    
+    # ✅ CRITICAL: Exit scan changes status active → completed + calculates overtime
+    scanExitQR(qrCode: String!): ScanExitQRResponse!
     
     # Keep the old one for backward compatibility if needed
     generateBookingQR(bookingId: ID!): Booking!
     verifyQRCode(qrToken: String!): QRVerificationResult!
     generateParkingAccessQR(bookingId: ID!, type: String!): String!
+    
+    # ✅ NEW: Force generate exit QR for active bookings (fallback)
+    forceGenerateExitQR(bookingId: ID!): QRResponse!
+    
+    # ✅ NEW: Manual status transition for land owner (emergency)
+    updateBookingStatus(bookingId: ID!, newStatus: String!, reason: String): Booking!
   }
 
-  # ✅ NEW: Response type for QR scanning
+  # ✅ ENHANCED: Specific response for entry QR scanning
+  type ScanEntryQRResponse {
+    success: Boolean!
+    message: String!
+    booking: Booking!
+    # ✅ AUTO-GENERATED: Exit QR is automatically created when entry is scanned
+    exitQR: QRResponse
+    parkingStartTime: String!
+  }
+
+  # ✅ ENHANCED: Specific response for exit QR scanning  
+  type ScanExitQRResponse {
+    success: Boolean!
+    message: String!
+    booking: Booking!
+    # ✅ OVERTIME: Calculate overtime costs if exceeded duration
+    overtimeCost: Float
+    totalParkingDuration: Int!
+    actualEndTime: String!
+  }
+
+  # ✅ KEEP: Generic response for backward compatibility
   type ScanQRResponse {
     success: Boolean!
     message: String!

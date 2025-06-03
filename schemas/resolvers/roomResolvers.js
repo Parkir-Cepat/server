@@ -19,19 +19,20 @@ export const roomResolvers = {
     },
     participants: async (room) => {
       const userRooms = await UserRoom.findByRoomId(room._id);
-      const userIds = userRooms.map(ur => ur.user_id);
+      const userIds = userRooms.map((ur) => ur.user_id);
       return await User.findByIds(userIds);
     },
     participant_count: async (room) => {
       return await UserRoom.countByRoom(room._id);
-    }
+    },
   },
 
   Query: {
     getRoom: async (_, { id }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const room = await Room.findById(id);
       if (!room) throw new Error("Room tidak ditemukan");
@@ -40,62 +41,70 @@ export const roomResolvers = {
       const userRoom = await UserRoom.findByUserAndRoom(user._id, id);
       if (!userRoom) {
         throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
-          extensions: { code: 'FORBIDDEN' }
+          extensions: { code: "FORBIDDEN" },
         });
       }
 
       return room;
     },
     getMyRooms: async (_, __, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const userRooms = await UserRoom.findByUserId(user._id);
-      const roomIds = userRooms.map(ur => ur.room_id);
+      const roomIds = userRooms.map((ur) => ur.room_id);
       return await Room.findByIds(roomIds);
     },
     getPublicRooms: async (_, { limit, parking_id }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
-      
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+
       return await Room.findPublicRooms(limit, parking_id);
     },
     getPrivateRoomWithUser: async (_, { user_id, parking_id }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
-      
-      return await Room.findPrivateRoomBetweenUsers(user._id, user_id, parking_id);
-    }
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+
+      return await Room.findPrivateRoomBetweenUsers(
+        user._id,
+        user_id,
+        parking_id
+      );
+    },
   },
 
   Mutation: {
     createRoom: async (_, { input }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const { nameRoom, participants } = input;
-      // Extract type from input, default to 'general' 
+      // Extract type from input, default to 'general'
       const { name, type } = input;
       const roomName = name || nameRoom;
 
       // Buat room baru
-      const room = await Room.create({ 
-        nameRoom: roomName, 
+      const room = await Room.create({
+        nameRoom: roomName,
         type,
-        privacy: input.privacy || 'public',
+        privacy: input.privacy || "public",
         creator_id: user._id,
         max_participants: input.max_participants,
-        parking_id: input.parking_id
+        parking_id: input.parking_id,
       });
 
       // Tambahkan creator sebagai participant
       await UserRoom.create({
         user_id: user._id,
-        room_id: room._id
+        room_id: room._id,
       });
 
       // Tambahkan participants lain jika ada
@@ -106,7 +115,7 @@ export const roomResolvers = {
           if (participant) {
             await UserRoom.create({
               user_id: participantId,
-              room_id: room._id
+              room_id: room._id,
             });
           }
         }
@@ -115,14 +124,19 @@ export const roomResolvers = {
       return room;
     },
     createPrivateRoom: async (_, { input }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const { participant_id, parking_id } = input;
 
       // Cek apakah sudah ada room private antara kedua user ini
-      const existingRoom = await Room.findPrivateRoomBetweenUsers(user._id, participant_id, parking_id);
+      const existingRoom = await Room.findPrivateRoomBetweenUsers(
+        user._id,
+        participant_id,
+        parking_id
+      );
       if (existingRoom) {
         return existingRoom;
       }
@@ -139,46 +153,50 @@ export const roomResolvers = {
       // Buat room private baru
       const room = await Room.create({
         nameRoom: roomName,
-        type: 'direct',
-        privacy: 'private',
+        type: "direct",
+        privacy: "private",
         creator_id: user._id,
         max_participants: 2,
-        parking_id
+        parking_id,
       });
 
       // Tambahkan kedua user sebagai participants
       await UserRoom.create({
         user_id: user._id,
         room_id: room._id,
-        role: 'admin'
+        role: "admin",
       });
 
       await UserRoom.create({
         user_id: participant_id,
         room_id: room._id,
-        role: 'member'
+        role: "member",
       });
 
       return room;
     },
     joinRoom: async (_, { input }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const { room_id } = input;
       const room = await Room.findById(room_id);
       if (!room) throw new Error("Room tidak ditemukan");
 
       // Cek apakah room adalah public
-      if (room.privacy === 'private') {
+      if (room.privacy === "private") {
         throw new GraphQLError("Room ini bersifat private", {
-          extensions: { code: 'FORBIDDEN' }
+          extensions: { code: "FORBIDDEN" },
         });
       }
 
       // Cek apakah user sudah menjadi member
-      const existingUserRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
+      const existingUserRoom = await UserRoom.findByUserAndRoom(
+        user._id,
+        room_id
+      );
       if (existingUserRoom) {
         return room; // User sudah menjadi member
       }
@@ -195,15 +213,16 @@ export const roomResolvers = {
       await UserRoom.create({
         user_id: user._id,
         room_id: room_id,
-        role: 'member'
+        role: "member",
       });
 
       return room;
     },
     updateRoom: async (_, { id, input }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const room = await Room.findById(id);
       if (!room) throw new Error("Room tidak ditemukan");
@@ -212,16 +231,17 @@ export const roomResolvers = {
       const userRoom = await UserRoom.findByUserAndRoom(user._id, id);
       if (!userRoom) {
         throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
-          extensions: { code: 'FORBIDDEN' }
+          extensions: { code: "FORBIDDEN" },
         });
       }
 
       return await Room.update(id, input);
     },
     addParticipants: async (_, { room_id, participant_ids }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const room = await Room.findById(room_id);
       if (!room) throw new Error("Room tidak ditemukan");
@@ -230,17 +250,21 @@ export const roomResolvers = {
       const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
       if (!userRoom) {
         throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
-          extensions: { code: 'FORBIDDEN' }
+          extensions: { code: "FORBIDDEN" },
         });
       }
       // Process each participant
       for (const participant_id of participant_ids) {
         // Pastikan user yang akan ditambah exists
         const newParticipant = await User.findById(participant_id);
-        if (!newParticipant) throw new Error(`User dengan ID ${participant_id} tidak ditemukan`);
-        
+        if (!newParticipant)
+          throw new Error(`User dengan ID ${participant_id} tidak ditemukan`);
+
         // Cek apakah user sudah menjadi participant
-        const existingUserRoom = await UserRoom.findByUserAndRoom(participant_id, room_id);
+        const existingUserRoom = await UserRoom.findByUserAndRoom(
+          participant_id,
+          room_id
+        );
         if (!existingUserRoom) {
           // Add user to room if they're not already a participant
           await UserRoom.create({ user_id: participant_id, room_id });
@@ -250,9 +274,10 @@ export const roomResolvers = {
       return room;
     },
     removeParticipant: async (_, { room_id, user_id }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const room = await Room.findById(room_id);
       if (!room) throw new Error("Room tidak ditemukan");
@@ -261,7 +286,7 @@ export const roomResolvers = {
       const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
       if (!userRoom && user_id !== user._id.toString()) {
         throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
-          extensions: { code: 'FORBIDDEN' }
+          extensions: { code: "FORBIDDEN" },
         });
       }
 
@@ -269,9 +294,10 @@ export const roomResolvers = {
       return room;
     },
     deleteRoom: async (_, { id }, { user }) => {
-      if (!user) throw new GraphQLError("Anda harus login terlebih dahulu", {
-        extensions: { code: 'UNAUTHENTICATED' }
-      });
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
 
       const room = await Room.findById(id);
       if (!room) throw new Error("Room tidak ditemukan");
@@ -280,17 +306,49 @@ export const roomResolvers = {
       const userRoom = await UserRoom.findByUserAndRoom(user._id, id);
       if (!userRoom && user.role !== "admin") {
         throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
-          extensions: { code: 'FORBIDDEN' }
+          extensions: { code: "FORBIDDEN" },
         });
       }
 
       // Hapus semua user-room relationships
       await UserRoom.removeByRoom(id);
-      
+
       // Hapus room
       await Room.delete(id);
-      
+
       return true;
-    }
-  }
+    },
+    leaveRoom: async (_, { room_id }, { user }) => {
+      try {
+        if (!user)
+          throw new GraphQLError("Anda harus login terlebih dahulu", {
+            extensions: { code: "UNAUTHENTICATED" },
+          });
+
+        // Pastikan user adalah member room
+        const userRoom = await UserRoom.findByUserAndRoom(user._id, room_id);
+        if (!userRoom) {
+          throw new GraphQLError("Anda tidak memiliki akses ke room ini", {
+            extensions: { code: "FORBIDDEN" },
+          });
+        }
+
+        // Hapus user dari room
+        await UserRoom.delete(user._id, room_id);
+
+        // Cek apakah masih ada peserta di room
+        const remaining = await UserRoom.countByRoom(room_id);
+        if (remaining === 0) {
+          // Hapus room jika tidak ada peserta
+          await Room.delete(room_id);
+        }
+
+        return true;
+      } catch (error) {
+        throw new GraphQLError(error.message || "Gagal keluar dari room", {
+          extensions: { code: "INTERNAL_SERVER_ERROR" },
+        });
+      }
+    },
+  },
 };

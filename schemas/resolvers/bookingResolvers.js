@@ -628,8 +628,6 @@ export const bookingResolvers = {
         const { verifyQRToken } = await import("../../helpers/qrcode.js");
         const decoded = verifyQRToken(qrCode);
 
-        console.log("🔍 Decoded QR:", decoded);
-
         // ✅ GET booking to check authorization
         const booking = await Booking.findById(decoded.bookingId);
         if (!booking) {
@@ -637,7 +635,8 @@ export const bookingResolvers = {
             success: false,
             message: "Booking tidak ditemukan",
             booking: null,
-            overtimeCost: 0,
+            exitQR: null,
+            parkingStartTime: null,
           };
         }
 
@@ -653,19 +652,10 @@ export const bookingResolvers = {
             success: false,
             message: "Anda tidak memiliki akses untuk scan QR code ini",
             booking: null,
-            overtimeCost: 0,
+            exitQR: null,
+            parkingStartTime: null,
           };
         }
-
-        console.log(
-          `✅ Authorization passed - User type: ${
-            isParkingOwner ? "Land Owner" : "Customer"
-          }`
-        );
-
-        // ✅ DIRECT database update instead of model method
-        const { getDB } = await import("../../config/db.js");
-        const db = getDB();
 
         // Check booking status
         if (booking.status !== "confirmed") {
@@ -673,17 +663,22 @@ export const bookingResolvers = {
             success: false,
             message: `Booking dengan status "${booking.status}" tidak dapat di-scan untuk entry`,
             booking: null,
-            overtimeCost: 0,
+            exitQR: null,
+            parkingStartTime: null,
           };
         }
 
-        // Update booking status to active
+        // ✅ CRITICAL: Update to active AND set parking session tracking
+        const parkingStartTime = new Date();
+        const { getDB } = await import("../../config/db.js");
+        const db = getDB();
+
         const result = await db.collection("bookings").updateOne(
           { _id: booking._id },
           {
             $set: {
               status: "active",
-              actual_entry_time: new Date(),
+              parking_start_time: parkingStartTime.toISOString(), // ✅ TRACK session start
               updated_at: new Date(),
             },
           }
@@ -694,15 +689,26 @@ export const bookingResolvers = {
             success: false,
             message: "Gagal mengupdate status booking",
             booking: null,
-            overtimeCost: 0,
+            exitQR: null,
+            parkingStartTime: null,
           };
+        }
+
+        // ✅ CRITICAL: AUTO-GENERATE EXIT QR when entry is scanned
+        let exitQRData = null;
+        try {
+          exitQRData = await Booking.generateExitQR(booking._id.toString());
+          console.log("✅ Exit QR auto-generated:", exitQRData.qrCode);
+        } catch (exitQRError) {
+          console.error("⚠️ Failed to auto-generate exit QR:", exitQRError);
+          // Don't fail the whole operation, just log the error
         }
 
         // Get updated booking
         const updatedBooking = await Booking.findById(booking._id);
 
         console.log(
-          `✅ Entry scan successful - Booking ${booking._id} now active`
+          `✅ Entry scan successful - Booking ${booking._id} now active with exit QR`
         );
 
         // Publish event untuk subscription
@@ -710,25 +716,28 @@ export const bookingResolvers = {
           bookingStatusChanged: updatedBooking,
         });
 
+        // ✅ RETURN: ScanEntryQRResponse format
         return {
           success: true,
-          message: "Entry berhasil! Booking sekarang aktif.",
+          message:
+            "Entry berhasil! Booking sekarang aktif dan exit QR telah digenerate.",
           booking: updatedBooking,
-          overtimeCost: 0,
+          exitQR: exitQRData, // ✅ AUTO-GENERATED exit QR
+          parkingStartTime: parkingStartTime.toISOString(),
         };
       } catch (error) {
         console.error("❌ Scan entry QR error:", error);
-
         return {
           success: false,
           message: error.message || "Failed to scan entry QR code",
           booking: null,
-          overtimeCost: 0,
+          exitQR: null,
+          parkingStartTime: null,
         };
       }
     },
 
-    // ✅ FIXED: Enhanced scanExitQR with land owner support
+    // ✅ FIXED: Enhanced scanExitQR with proper flow
     scanExitQR: async (_, { qrCode }, { user }) => {
       ensureAuth(user);
 
@@ -739,8 +748,6 @@ export const bookingResolvers = {
         const { verifyQRToken } = await import("../../helpers/qrcode.js");
         const decoded = verifyQRToken(qrCode);
 
-        console.log("🔍 Decoded QR:", decoded);
-
         // ✅ GET booking to check authorization
         const booking = await Booking.findById(decoded.bookingId);
         if (!booking) {
@@ -749,6 +756,8 @@ export const bookingResolvers = {
             message: "Booking tidak ditemukan",
             booking: null,
             overtimeCost: 0,
+            totalParkingDuration: 0,
+            actualEndTime: null,
           };
         }
 
@@ -765,18 +774,10 @@ export const bookingResolvers = {
             message: "Anda tidak memiliki akses untuk scan QR code ini",
             booking: null,
             overtimeCost: 0,
+            totalParkingDuration: 0,
+            actualEndTime: null,
           };
         }
-
-        console.log(
-          `✅ Authorization passed - User type: ${
-            isParkingOwner ? "Land Owner" : "Customer"
-          }`
-        );
-
-        // ✅ DIRECT database update instead of model method
-        const { getDB } = await import("../../config/db.js");
-        const db = getDB();
 
         // Check booking status
         if (booking.status !== "active") {
@@ -785,34 +786,45 @@ export const bookingResolvers = {
             message: `Booking dengan status "${booking.status}" tidak dapat di-scan untuk exit`,
             booking: null,
             overtimeCost: 0,
+            totalParkingDuration: 0,
+            actualEndTime: null,
           };
         }
 
-        // Calculate overtime if any
-        const now = new Date();
-        const startTime = new Date(booking.start_time);
-        const plannedEndTime = new Date(
-          startTime.getTime() + booking.duration * 60 * 60 * 1000
+        // ✅ CRITICAL: Calculate parking duration and overtime
+        const actualEndTime = new Date();
+        const parkingStartTime = new Date(
+          booking.parking_start_time || booking.start_time
         );
+        const totalParkingDuration = Math.ceil(
+          (actualEndTime - parkingStartTime) / (60 * 60 * 1000)
+        ); // in hours
+
+        const plannedDuration = booking.duration;
         let overtimeCost = 0;
 
-        if (now > plannedEndTime) {
-          const overtimeHours = Math.ceil(
-            (now - plannedEndTime) / (60 * 60 * 1000)
-          );
+        if (totalParkingDuration > plannedDuration) {
+          const overtimeHours = totalParkingDuration - plannedDuration;
           const hourlyRate = parking?.rates?.[booking.vehicle_type] || 0;
           overtimeCost = overtimeHours * hourlyRate;
+          console.log(
+            `⚠️ Overtime detected: ${overtimeHours}h x Rp${hourlyRate} = Rp${overtimeCost}`
+          );
         }
 
-        // Update booking status to completed
+        // ✅ CRITICAL: Update to completed with session tracking
+        const { getDB } = await import("../../config/db.js");
+        const db = getDB();
+
         const result = await db.collection("bookings").updateOne(
           { _id: booking._id },
           {
             $set: {
               status: "completed",
-              actual_exit_time: now,
+              parking_end_time: actualEndTime.toISOString(), // ✅ TRACK session end
+              total_parking_duration: totalParkingDuration,
               overtime_cost: overtimeCost,
-              updated_at: now,
+              updated_at: actualEndTime,
             },
           }
         );
@@ -823,7 +835,36 @@ export const bookingResolvers = {
             message: "Gagal mengupdate status booking",
             booking: null,
             overtimeCost: 0,
+            totalParkingDuration: 0,
+            actualEndTime: null,
           };
+        }
+
+        // ✅ CHARGE overtime if applicable
+        if (overtimeCost > 0) {
+          try {
+            // Deduct overtime from user balance
+            await User.updateSaldo(booking.user_id, -overtimeCost);
+
+            // Create overtime transaction
+            await Transaction.create({
+              user_id: booking.user_id,
+              booking_id: booking._id,
+              type: "overtime_payment",
+              amount: overtimeCost,
+              payment_method: "saldo",
+              status: "success",
+              transaction_id: `OVERTIME-${Date.now()}`,
+              description: `Pembayaran overtime ${
+                totalParkingDuration - plannedDuration
+              } jam`,
+            });
+
+            console.log(`💰 Overtime charged: Rp${overtimeCost}`);
+          } catch (overtimeError) {
+            console.error("⚠️ Failed to charge overtime:", overtimeError);
+            // Continue with completion but log the error
+          }
         }
 
         // Get updated booking
@@ -838,6 +879,7 @@ export const bookingResolvers = {
           bookingStatusChanged: updatedBooking,
         });
 
+        // ✅ RETURN: ScanExitQRResponse format
         return {
           success: true,
           message:
@@ -846,20 +888,21 @@ export const bookingResolvers = {
               : "Exit berhasil! Booking selesai tepat waktu.",
           booking: updatedBooking,
           overtimeCost,
+          totalParkingDuration,
+          actualEndTime: actualEndTime.toISOString(),
         };
       } catch (error) {
         console.error("❌ Scan exit QR error:", error);
-
         return {
           success: false,
           message: error.message || "Failed to scan exit QR code",
           booking: null,
           overtimeCost: 0,
+          totalParkingDuration: 0,
+          actualEndTime: null,
         };
       }
     },
-
-    // ✅ REMOVED: Delete duplicate scanEntryQR and scanExitQR resolvers
   }, // ✅ End Mutation here
 
   // ✅ Move Subscription out of Mutation
