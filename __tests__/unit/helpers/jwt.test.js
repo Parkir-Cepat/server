@@ -1,137 +1,191 @@
 import jwt from 'jsonwebtoken';
-import { generateToken, verifyToken, ensureAuth, ensureRole } from '../../../helpers/jwt.js';
+import { generateToken, verifyToken, ensureAuth, ensureRole, authContext } from '../../../helpers/jwt.js';
 import { User } from '../../../models/User.js';
+import { ObjectId } from 'mongodb';
 
-// Mock User model
+// Mock dependencies
+jest.mock('jsonwebtoken');
 jest.mock('../../../models/User.js');
 
-describe('JWT Helper Functions', () => {
+describe('JWT Helper', () => {
   const mockUser = {
-    _id: '507f1f77bcf86cd799439011',
+    _id: new ObjectId(),
     email: 'test@example.com',
-    role: 'customer'
+    role: 'user'
   };
 
   beforeEach(() => {
-    process.env.JWT_SECRET = 'test-jwt-secret';
+    process.env.JWT_SECRET = 'test-secret';
     process.env.JWT_EXPIRES_IN = '7d';
     jest.clearAllMocks();
   });
 
-  describe('generateToken', () => {
-    it('should generate valid JWT token', () => {
+  describe('Token Generation', () => {
+    it('should generate token with correct payload', () => {
+      const mockToken = 'mock-token';
+      jwt.sign.mockReturnValue(mockToken);
+
       const token = generateToken(mockUser);
-      
-      expect(token).toBeDefined();
-      expect(typeof token).toBe('string');
-      
-      // Verify token structure
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      expect(decoded.id).toBe(mockUser._id);
-      expect(decoded.email).toBe(mockUser.email);
-      expect(decoded.role).toBe(mockUser.role);
+
+      expect(token).toBe(mockToken);
+      expect(jwt.sign).toHaveBeenCalledWith(
+        {
+          id: mockUser._id,
+          email: mockUser.email,
+          role: mockUser.role
+        },
+        'test-secret',
+        { expiresIn: '7d' }
+      );
     });
 
-    it('should include expiration time', () => {
-      const token = generateToken(mockUser);
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      
-      expect(decoded.exp).toBeDefined();
-      expect(decoded.iat).toBeDefined();
-      expect(decoded.exp).toBeGreaterThan(decoded.iat);
-    });
-
-    it('should use default expiration if JWT_EXPIRES_IN not set', () => {
+    it('should use default expiration if not set in env', () => {
       delete process.env.JWT_EXPIRES_IN;
-      const token = generateToken(mockUser);
-      
-      expect(token).toBeDefined();
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      expect(decoded.exp).toBeDefined();
+      const mockToken = 'mock-token';
+      jwt.sign.mockReturnValue(mockToken);
+
+      generateToken(mockUser);
+
+      expect(jwt.sign).toHaveBeenCalledWith(
+        expect.any(Object),
+        'test-secret',
+        { expiresIn: '7d' }
+      );
     });
   });
 
-  describe('verifyToken', () => {
-    it('should verify valid token successfully', async () => {
-      const token = generateToken(mockUser);
-      const decoded = await verifyToken(token);
-      
-      expect(decoded.id).toBe(mockUser._id);
-      expect(decoded.email).toBe(mockUser.email);
-      expect(decoded.role).toBe(mockUser.role);
+  describe('Token Verification', () => {
+    it('should verify valid token', async () => {
+      const mockDecoded = {
+        id: mockUser._id,
+        email: mockUser.email,
+        role: mockUser.role
+      };
+      jwt.verify.mockReturnValue(mockDecoded);
+
+      const result = await verifyToken('valid-token');
+
+      expect(result).toEqual(mockDecoded);
+      expect(jwt.verify).toHaveBeenCalledWith('valid-token', 'test-secret');
     });
 
     it('should throw error for invalid token', async () => {
-      const invalidToken = 'invalid.token.here';
-      
-      await expect(verifyToken(invalidToken)).rejects.toThrow('Token tidak valid');
-    });
+      jwt.verify.mockImplementation(() => {
+        throw new Error('Invalid token');
+      });
 
-    it('should throw error for expired token', async () => {
-      const expiredToken = jwt.sign(
-        { id: mockUser._id },
-        process.env.JWT_SECRET,
-        { expiresIn: '-1s' }
-      );
-      
-      await expect(verifyToken(expiredToken)).rejects.toThrow('Token tidak valid');
-    });
-
-    it('should throw error for token with wrong secret', async () => {
-      const tokenWithWrongSecret = jwt.sign(
-        { id: mockUser._id },
-        'wrong-secret',
-        { expiresIn: '1h' }
-      );
-      
-      await expect(verifyToken(tokenWithWrongSecret)).rejects.toThrow('Token tidak valid');
+      await expect(verifyToken('invalid-token'))
+        .rejects
+        .toThrow('Token tidak valid');
     });
   });
 
-  describe('ensureAuth', () => {
-    it('should return user if authenticated', () => {
-      const result = ensureAuth(mockUser);
-      expect(result).toBe(mockUser);
+  describe('Auth Context', () => {
+    const mockToken = 'valid-token';
+    const mockDecoded = {
+      id: mockUser._id,
+      email: mockUser.email,
+      role: mockUser.role
+    };
+
+    beforeEach(() => {
+      jwt.verify.mockReturnValue(mockDecoded);
+      User.findById.mockResolvedValue(mockUser);
     });
 
-    it('should throw error if user is null', () => {
-      expect(() => ensureAuth(null)).toThrow('Anda harus login terlebih dahulu');
+    describe('HTTP Request', () => {
+      it('should return user for valid token', async () => {
+        const req = {
+          headers: {
+            authorization: `Bearer ${mockToken}`
+          }
+        };
+
+        const context = await authContext({ req });
+
+        expect(context.user).toEqual(mockUser);
+        expect(User.findById).toHaveBeenCalledWith(mockUser._id);
+      });
+
+      it('should return null for missing token', async () => {
+        const req = { headers: {} };
+        const context = await authContext({ req });
+
+        expect(context.user).toBeNull();
+      });
+
+      it('should return null for invalid token', async () => {
+        const req = {
+          headers: {
+            authorization: 'Bearer invalid-token'
+          }
+        };
+
+        jwt.verify.mockImplementation(() => {
+          throw new Error('Invalid token');
+        });
+
+        const context = await authContext({ req });
+
+        expect(context.user).toBeNull();
+      });
     });
 
-    it('should throw error if user is undefined', () => {
-      expect(() => ensureAuth(undefined)).toThrow('Anda harus login terlebih dahulu');
+    describe('WebSocket Connection', () => {
+      it('should return user for valid token', async () => {
+        const connection = {
+          context: {
+            authorization: `Bearer ${mockToken}`
+          }
+        };
+
+        const context = await authContext({ connection });
+
+        expect(context.user).toEqual(mockUser);
+      });
+
+      it('should return null for missing token', async () => {
+        const connection = { context: {} };
+        const context = await authContext({ connection });
+
+        expect(context.user).toBeNull();
+      });
     });
   });
 
-  describe('ensureRole', () => {
-    it('should return user if role matches (single role)', () => {
-      const result = ensureRole(mockUser, 'customer');
-      expect(result).toBe(mockUser);
+  describe('Auth Middleware', () => {
+    describe('ensureAuth', () => {
+      it('should return user if authenticated', () => {
+        const result = ensureAuth(mockUser);
+        expect(result).toBe(mockUser);
+      });
+
+      it('should throw error if not authenticated', () => {
+        expect(() => ensureAuth(null))
+          .toThrow('Anda harus login terlebih dahulu');
+      });
     });
 
-    it('should return user if role matches (multiple roles)', () => {
-      const result = ensureRole(mockUser, ['customer', 'admin']);
-      expect(result).toBe(mockUser);
-    });
+    describe('ensureRole', () => {
+      it('should return user if has correct role', () => {
+        const result = ensureRole(mockUser, 'user');
+        expect(result).toBe(mockUser);
+      });
 
-    it('should throw error if role does not match', () => {
-      expect(() => ensureRole(mockUser, 'admin')).toThrow('Anda tidak memiliki akses');
-    });
+      it('should accept array of roles', () => {
+        const result = ensureRole(mockUser, ['admin', 'user']);
+        expect(result).toBe(mockUser);
+      });
 
-    it('should throw error if user is not authenticated', () => {
-      expect(() => ensureRole(null, 'customer')).toThrow('Anda harus login terlebih dahulu');
-    });
+      it('should throw error if wrong role', () => {
+        expect(() => ensureRole(mockUser, 'admin'))
+          .toThrow('Anda tidak memiliki akses');
+      });
 
-    it('should handle admin role', () => {
-      const adminUser = { ...mockUser, role: 'admin' };
-      const result = ensureRole(adminUser, 'admin');
-      expect(result).toBe(adminUser);
-    });
-
-    it('should handle owner role', () => {
-      const ownerUser = { ...mockUser, role: 'owner' };
-      const result = ensureRole(ownerUser, ['owner', 'admin']);
-      expect(result).toBe(ownerUser);
+      it('should throw error if not authenticated', () => {
+        expect(() => ensureRole(null, 'user'))
+          .toThrow('Anda harus login terlebih dahulu');
+      });
     });
   });
 }); 

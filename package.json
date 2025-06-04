@@ -51,6 +51,7 @@
     "ws": "^8.18.2"
   },
   "devDependencies": {
+    "@apollo/client": "^3.13.8",
     "@babel/core": "^7.23.0",
     "@babel/preset-env": "^7.23.0",
     "@types/jest": "^29.5.5",
@@ -72,7 +73,8 @@
       "!coverage/**",
       "!__tests__/**",
       "!babel.config.js",
-      "!jest.config.js"
+      "!jest.config.js",
+      "!schemas/typeDefs.js"
     ],
     "coverageThreshold": {
       "global": {

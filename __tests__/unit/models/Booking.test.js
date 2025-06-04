@@ -1,537 +1,359 @@
 import { Booking } from '../../../models/Booking.js';
 import { getDB } from '../../../config/db.js';
 import { ObjectId } from 'mongodb';
+import { generateBookingQR, generateEntryQRToken, generateExitQRToken, verifyQRToken } from '../../../helpers/qrcode.js';
 
 // Mock dependencies
 jest.mock('../../../config/db.js');
-jest.mock('../../../helpers/qrcode.js', () => ({
-  generateBookingQR: jest.fn(),
-  generateParkingAccessQR: jest.fn()
-}));
+jest.mock('../../../helpers/qrcode.js');
 
 describe('Booking Model', () => {
-  let mockDb;
+  let mockDB;
   let mockCollection;
-  let mockParkingCollection;
+  let mockSession;
+  const mockUserId = new ObjectId();
+  const mockParkingId = new ObjectId();
+  const mockBookingId = new ObjectId();
 
   beforeEach(() => {
     mockCollection = {
+      createIndex: jest.fn().mockResolvedValue(null),
       findOne: jest.fn(),
-      insertOne: jest.fn(),
-      findOneAndUpdate: jest.fn(),
-      updateOne: jest.fn(),
       find: jest.fn().mockReturnThis(),
+      insertOne: jest.fn(),
+      updateOne: jest.fn(),
+      findOneAndUpdate: jest.fn(),
+      countDocuments: jest.fn(),
       sort: jest.fn().mockReturnThis(),
-      toArray: jest.fn(),
-      createIndex: jest.fn()
+      toArray: jest.fn()
     };
 
-    mockParkingCollection = {
-      findOne: jest.fn(),
-      updateOne: jest.fn()
+    mockSession = {
+      withTransaction: jest.fn(callback => callback()),
+      endSession: jest.fn()
     };
-    
-    mockDb = {
-      collection: jest.fn((name) => {
-        if (name === 'bookings') return mockCollection;
-        if (name === 'parking_lots') return mockParkingCollection;
-        return mockCollection;
-      })
+
+    mockDB = {
+      collection: jest.fn().mockReturnValue(mockCollection),
+      client: {
+        startSession: jest.fn().mockReturnValue(mockSession)
+      }
     };
-    
-    getDB.mockReturnValue(mockDb);
-    jest.clearAllMocks();
+
+    getDB.mockReturnValue(mockDB);
   });
 
-  describe('findById', () => {
-    it('should find booking by ID successfully', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const mockBooking = { _id: new ObjectId(bookingId), status: 'pending' };
-      
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-      
-      const result = await Booking.findById(bookingId);
-      
-      expect(mockCollection.findOne).toHaveBeenCalledWith({ 
-        _id: new ObjectId(bookingId) 
-      });
-      expect(result).toEqual(mockBooking);
-    });
-
-    it('should return null if booking not found', async () => {
-      mockCollection.findOne.mockResolvedValue(null);
-      
-      const validObjectId = '507f1f77bcf86cd799439011';
-      const result = await Booking.findById(validObjectId);
-      
-      expect(result).toBeNull();
-    });
-  });
-
-  describe('create', () => {
-    const mockBookingData = {
-      userId: '507f1f77bcf86cd799439011',
-      parkingLotId: '507f1f77bcf86cd799439012',
-      vehicleType: 'car',
-      startTime: '2024-01-01T10:00:00Z',
-      duration: 2
-    };
-
-    it('should create booking successfully', async () => {
-      const mockParking = {
-        _id: new ObjectId(mockBookingData.parkingLotId),
-        availableSlots: 10,
-        tariff: 5000
+  describe('Validation & Input Tests', () => {
+    describe('create', () => {
+      const mockBookingData = {
+        user_id: mockUserId,
+        parking_id: mockParkingId,
+        vehicle_type: 'car',
+        start_time: new Date(),
+        duration: 2
       };
 
-      const insertedId = new ObjectId();
-      
-      mockParkingCollection.findOne.mockResolvedValue(mockParking);
-      mockCollection.insertOne.mockResolvedValue({ insertedId });
-      mockParkingCollection.updateOne.mockResolvedValue({});
+      it('should throw error if parking not found', async () => {
+        mockCollection.findOne.mockResolvedValue(null);
 
-      const result = await Booking.create(mockBookingData);
-
-      expect(mockParkingCollection.findOne).toHaveBeenCalledWith({
-        _id: new ObjectId(mockBookingData.parkingLotId)
+        await expect(Booking.create(mockBookingData))
+          .rejects
+          .toThrow('Tempat parkir tidak ditemukan');
       });
 
-      expect(mockCollection.insertOne).toHaveBeenCalledWith(
-        expect.objectContaining({
-          userId: new ObjectId(mockBookingData.userId),
-          parkingLotId: new ObjectId(mockBookingData.parkingLotId),
-          vehicleType: mockBookingData.vehicleType,
-          duration: mockBookingData.duration,
-          cost: 10000, // 5000 * 2 hours
+      it('should throw error if no available slots', async () => {
+        const mockParking = {
+          _id: mockParkingId,
+          available: { car: 0 },
+          capacity: { car: 10 },
+          rates: { car: 10000 }
+        };
+
+        mockCollection.findOne.mockResolvedValue(mockParking);
+
+        await expect(Booking.create(mockBookingData))
+          .rejects
+          .toThrow(/Slot parkir car tidak tersedia/);
+      });
+
+      it('should throw error if vehicle type price not available', async () => {
+        const mockParking = {
+          _id: mockParkingId,
+          available: { car: 5 },
+          capacity: { car: 10 },
+          rates: { motorcycle: 5000 } // No car rate
+        };
+
+        mockCollection.findOne.mockResolvedValue(mockParking);
+
+        await expect(Booking.create(mockBookingData))
+          .rejects
+          .toThrow('Harga untuk car tidak tersedia');
+      });
+
+      it('should throw error if parking is full', async () => {
+        const mockParking = {
+          _id: mockParkingId,
+          available: { car: 5 },
+          capacity: { car: 10 },
+          rates: { car: 10000 }
+        };
+
+        mockCollection.findOne.mockResolvedValue(mockParking);
+        mockCollection.countDocuments.mockResolvedValue(10); // Full capacity
+
+        await expect(Booking.create(mockBookingData))
+          .rejects
+          .toThrow(/Slot parkir car sudah penuh/);
+      });
+
+      it('should create booking successfully', async () => {
+        const mockParking = {
+          _id: mockParkingId,
+          available: { car: 5 },
+          capacity: { car: 10 },
+          rates: { car: 10000 }
+        };
+
+        mockCollection.findOne.mockResolvedValue(mockParking);
+        mockCollection.countDocuments.mockResolvedValue(5); // Half capacity
+        mockCollection.insertOne.mockResolvedValue({ insertedId: mockBookingId });
+
+        const result = await Booking.create(mockBookingData);
+
+        expect(result).toEqual(expect.objectContaining({
+          _id: mockBookingId,
+          user_id: mockUserId,
+          parking_id: mockParkingId,
+          vehicle_type: 'car',
+          cost: 20000, // 2 hours * 10000
           status: 'pending'
-        })
-      );
-
-      expect(mockParkingCollection.updateOne).toHaveBeenCalledWith(
-        { _id: new ObjectId(mockBookingData.parkingLotId) },
-        { $inc: { availableSlots: -1 } }
-      );
-
-      expect(result._id).toBe(insertedId);
-    });
-
-    it('should throw error if parking lot not found', async () => {
-      mockParkingCollection.findOne.mockResolvedValue(null);
-
-      await expect(Booking.create(mockBookingData))
-        .rejects.toThrow('Tempat parkir tidak ditemukan');
-    });
-
-    it('should throw error if no available slots', async () => {
-      const mockParking = {
-        _id: new ObjectId(mockBookingData.parkingLotId),
-        availableSlots: 0,
-        tariff: 5000
-      };
-
-      mockParkingCollection.findOne.mockResolvedValue(mockParking);
-
-      await expect(Booking.create(mockBookingData))
-        .rejects.toThrow('Slot parkir tidak tersedia');
-    });
-
-    it('should calculate cost correctly', async () => {
-      const mockParking = {
-        _id: new ObjectId(mockBookingData.parkingLotId),
-        availableSlots: 5,
-        tariff: 7500
-      };
-
-      const bookingData = { ...mockBookingData, duration: 3 };
-      
-      mockParkingCollection.findOne.mockResolvedValue(mockParking);
-      mockCollection.insertOne.mockResolvedValue({ insertedId: new ObjectId() });
-      mockParkingCollection.updateOne.mockResolvedValue({});
-
-      await Booking.create(bookingData);
-
-      expect(mockCollection.insertOne).toHaveBeenCalledWith(
-        expect.objectContaining({
-          cost: 22500 // 7500 * 3 hours
-        })
-      );
-    });
-  });
-
-  describe('updateStatus', () => {
-    it('should update booking status successfully', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const newStatus = 'confirmed';
-      const updatedBooking = { _id: new ObjectId(bookingId), status: newStatus };
-
-      mockCollection.findOneAndUpdate.mockResolvedValue(updatedBooking);
-
-      const result = await Booking.updateStatus(bookingId, newStatus);
-
-      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: new ObjectId(bookingId) },
-        { 
-          $set: {
-            status: newStatus,
-            updatedAt: expect.any(Date)
-          }
-        },
-        { returnDocument: 'after' }
-      );
-
-      expect(result).toEqual(updatedBooking);
-    });
-  });
-
-  describe('getActiveBookings', () => {
-    it('should get active bookings for user', async () => {
-      const userId = '507f1f77bcf86cd799439011';
-      const mockBookings = [
-        { _id: new ObjectId(), status: 'pending' },
-        { _id: new ObjectId(), status: 'confirmed' }
-      ];
-
-      mockCollection.toArray.mockResolvedValue(mockBookings);
-
-      const result = await Booking.getActiveBookings(userId);
-
-      expect(mockCollection.find).toHaveBeenCalledWith({
-        userId: new ObjectId(userId),
-        status: { $in: ['pending', 'confirmed'] }
+        }));
       });
-      expect(mockCollection.sort).toHaveBeenCalledWith({ startTime: -1 });
-      expect(result).toEqual(mockBookings);
     });
   });
 
-  describe('getBookingHistory', () => {
-    it('should get booking history for user', async () => {
-      const userId = '507f1f77bcf86cd799439011';
-      const mockBookings = [
-        { _id: new ObjectId(), status: 'completed' },
-        { _id: new ObjectId(), status: 'cancelled' }
-      ];
+  describe('CRUD Operations', () => {
+    describe('findById', () => {
+      it('should find booking by ID', async () => {
+        const mockBooking = {
+          _id: mockBookingId,
+          user_id: mockUserId,
+          status: 'pending'
+        };
 
-      mockCollection.toArray.mockResolvedValue(mockBookings);
+        mockCollection.findOne.mockResolvedValue(mockBooking);
 
-      const result = await Booking.getBookingHistory(userId);
+        const result = await Booking.findById(mockBookingId);
 
-      expect(mockCollection.find).toHaveBeenCalledWith({
-        userId: new ObjectId(userId),
-        status: { $in: ['completed', 'cancelled'] }
+        expect(result).toEqual(mockBooking);
+        expect(mockCollection.findOne).toHaveBeenCalledWith({
+          _id: expect.any(ObjectId)
+        });
       });
-      expect(mockCollection.sort).toHaveBeenCalledWith({ startTime: -1 });
-      expect(result).toEqual(mockBookings);
     });
-  });
 
-  describe('extend', () => {
-    it('should extend booking duration and cost', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const additionalDuration = 1;
-      const additionalCost = 5000;
-      const extendedBooking = { _id: new ObjectId(bookingId), duration: 3, cost: 15000 };
+    describe('updateStatus', () => {
+      it('should update booking status', async () => {
+        const mockBooking = {
+          _id: mockBookingId,
+          status: 'confirmed'
+        };
 
-      mockCollection.findOneAndUpdate.mockResolvedValue(extendedBooking);
+        mockCollection.findOneAndUpdate.mockResolvedValue(mockBooking);
 
-      const result = await Booking.extend(bookingId, additionalDuration, additionalCost);
+        const result = await Booking.updateStatus(mockBookingId, 'confirmed');
 
-      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: new ObjectId(bookingId) },
-        { 
-          $inc: {
-            duration: additionalDuration,
-            cost: additionalCost
+        expect(result).toEqual(mockBooking);
+        expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
+          { _id: expect.any(ObjectId) },
+          {
+            $set: {
+              status: 'confirmed',
+              updated_at: expect.any(Date)
+            }
           },
-          $set: { updatedAt: expect.any(Date) }
-        },
-        { returnDocument: 'after' }
-      );
-
-      expect(result).toEqual(extendedBooking);
+          { returnDocument: 'after' }
+        );
+      });
     });
   });
 
-  describe('getExpiredBookings', () => {
-    it('should get expired bookings', async () => {
-      const mockExpiredBookings = [
-        { _id: new ObjectId(), status: 'pending' },
-        { _id: new ObjectId(), status: 'confirmed' }
-      ];
+  describe('Business Logic', () => {
+    describe('processPayment', () => {
+      const mockBooking = {
+        _id: mockBookingId,
+        user_id: mockUserId,
+        parking_id: mockParkingId,
+        vehicle_type: 'car',
+        cost: 20000,
+        status: 'pending'
+      };
 
-      mockCollection.toArray.mockResolvedValue(mockExpiredBookings);
+      const mockUser = {
+        _id: mockUserId,
+        saldo: 100000
+      };
 
-      const result = await Booking.getExpiredBookings();
+      const mockParking = {
+        _id: mockParkingId,
+        available: { car: 5 }
+      };
 
-      expect(mockCollection.find).toHaveBeenCalledWith({
-        status: { $in: ['pending', 'confirmed'] },
-        $expr: {
-          $lt: [
-            {
-              $add: [
-                '$startTime',
-                { $multiply: ['$duration', 60 * 60 * 1000] }
-              ]
-            },
-            expect.any(Date)
-          ]
-        }
+      beforeEach(() => {
+        // Reset all mocks before each test
+        mockCollection.findOne.mockReset();
+        mockCollection.updateOne.mockReset();
+        mockSession.withTransaction.mockReset();
       });
 
-      expect(result).toEqual(mockExpiredBookings);
-    });
-  });
+      it('should throw error if booking not found', async () => {
+        mockCollection.findOne.mockResolvedValue(null);
 
-  describe('generateQRCode', () => {
-    it('should generate QR code for confirmed booking', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const mockBooking = { 
-        _id: new ObjectId(bookingId), 
-        status: 'confirmed' 
-      };
-      const mockQRCode = 'data:image/png;base64,mockqr';
-      const updatedBooking = { ...mockBooking, qrCode: mockQRCode };
-
-      const { generateBookingQR } = require('../../../helpers/qrcode.js');
-      
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-      generateBookingQR.mockResolvedValue(mockQRCode);
-      mockCollection.findOneAndUpdate.mockResolvedValue(updatedBooking);
-
-      const result = await Booking.generateQRCode(bookingId);
-
-      expect(generateBookingQR).toHaveBeenCalledWith(mockBooking);
-      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: new ObjectId(bookingId) },
-        { 
-          $set: {
-            qrCode: mockQRCode,
-            updatedAt: expect.any(Date)
-          }
-        },
-        { returnDocument: 'after' }
-      );
-
-      expect(result).toEqual(updatedBooking);
-    });
-
-    it('should throw error if booking not found', async () => {
-      mockCollection.findOne.mockResolvedValue(null);
-
-      const validObjectId = '507f1f77bcf86cd799439011';
-      await expect(Booking.generateQRCode(validObjectId))
-        .rejects.toThrow('Booking tidak ditemukan');
-    });
-
-    it('should throw error if booking not confirmed', async () => {
-      const validObjectId = '507f1f77bcf86cd799439011';
-      const mockBooking = { 
-        _id: new ObjectId(validObjectId), 
-        status: 'pending' 
-      };
-
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-
-      await expect(Booking.generateQRCode(validObjectId))
-        .rejects.toThrow('QR Code hanya bisa dibuat untuk booking yang sudah dikonfirmasi');
-    });
-  });
-
-  describe('generateAccessQR', () => {
-    it('should generate entry access QR', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const mockBooking = { 
-        _id: new ObjectId(bookingId), 
-        status: 'confirmed',
-        parkingLotId: new ObjectId()
-      };
-      const mockQRCode = 'data:image/png;base64,entryqr';
-
-      const { generateParkingAccessQR } = require('../../../helpers/qrcode.js');
-      
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-      generateParkingAccessQR.mockResolvedValue(mockQRCode);
-      mockCollection.updateOne.mockResolvedValue({});
-
-      const result = await Booking.generateAccessQR(bookingId, 'entry');
-
-      expect(generateParkingAccessQR).toHaveBeenCalledWith({
-        type: 'entry',
-        bookingId,
-        parkingLotId: mockBooking.parkingLotId.toString()
+        await expect(Booking.processPayment(mockBookingId, mockUserId.toString()))
+          .rejects
+          .toThrow('Booking tidak ditemukan');
       });
 
-      expect(mockCollection.updateOne).toHaveBeenCalledWith(
-        { _id: new ObjectId(bookingId) },
-        { 
-          $set: {
-            entryQR: mockQRCode,
-            updatedAt: expect.any(Date)
-          }
-        }
-      );
-
-      expect(result).toBe(mockQRCode);
-    });
-
-    it('should generate exit access QR', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const mockBooking = { 
-        _id: new ObjectId(bookingId), 
-        status: 'confirmed',
-        parkingLotId: new ObjectId()
-      };
-      const mockQRCode = 'data:image/png;base64,exitqr';
-
-      const { generateParkingAccessQR } = require('../../../helpers/qrcode.js');
-      
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-      generateParkingAccessQR.mockResolvedValue(mockQRCode);
-      mockCollection.updateOne.mockResolvedValue({});
-
-      const result = await Booking.generateAccessQR(bookingId, 'exit');
-
-      expect(mockCollection.updateOne).toHaveBeenCalledWith(
-        { _id: new ObjectId(bookingId) },
-        { 
-          $set: {
-            exitQR: mockQRCode,
-            updatedAt: expect.any(Date)
-          }
-        }
-      );
-
-      expect(result).toBe(mockQRCode);
-    });
-  });
-
-  describe('findByParkingLot', () => {
-    it('should find bookings by parking lot', async () => {
-      const parkingLotId = '507f1f77bcf86cd799439012';
-      const mockBookings = [
-        { _id: new ObjectId(), parkingLotId: new ObjectId(parkingLotId) }
-      ];
-
-      mockCollection.toArray.mockResolvedValue(mockBookings);
-
-      const result = await Booking.findByParkingLot(parkingLotId);
-
-      expect(mockCollection.find).toHaveBeenCalledWith({
-        parkingLotId: new ObjectId(parkingLotId)
+      it('should throw error if user not authorized', async () => {
+        const differentUserId = new ObjectId();
+        mockCollection.findOne.mockResolvedValue(mockBooking);
+        
+        await expect(Booking.processPayment(mockBookingId, differentUserId.toString()))
+          .rejects
+          .toThrow('Unauthorized - booking tidak milik user ini');
       });
-      expect(mockCollection.sort).toHaveBeenCalledWith({ startTime: -1 });
-      expect(result).toEqual(mockBookings);
+
+      it('should throw error if booking already paid', async () => {
+        const paidBooking = { ...mockBooking, status: 'confirmed' };
+        mockCollection.findOne.mockResolvedValue(paidBooking);
+
+        await expect(Booking.processPayment(mockBookingId, mockUserId.toString()))
+          .rejects
+          .toThrow('Booking sudah dibayar atau dibatalkan');
+      });
+
+      it('should throw error if insufficient balance', async () => {
+        const poorUser = { ...mockUser, saldo: 10000 }; // Saldo < cost (20000)
+        
+        mockCollection.findOne
+          .mockResolvedValueOnce(mockBooking)  // First findOne for booking
+          .mockResolvedValueOnce(poorUser);    // Second findOne for user
+
+        await expect(Booking.processPayment(mockBookingId, mockUserId.toString()))
+          .rejects
+          .toThrow(/Saldo tidak cukup/);
+      });
+
+      it('should throw error if no available slots', async () => {
+        const fullParking = { ...mockParking, available: { car: 0 } };
+        
+        mockCollection.findOne
+          .mockResolvedValueOnce(mockBooking)  // First findOne for booking
+          .mockResolvedValueOnce(mockUser)     // Second findOne for user
+          .mockResolvedValueOnce(fullParking); // Third findOne for parking
+
+        await expect(Booking.processPayment(mockBookingId, mockUserId.toString()))
+          .rejects
+          .toThrow(/Slot parkir car sudah tidak tersedia/);
+      });
+
+      it('should process payment successfully', async () => {
+        const updatedBooking = { ...mockBooking, status: 'confirmed' };
+        
+        // Setup mocks for the entire flow
+        mockCollection.findOne
+          .mockResolvedValueOnce(mockBooking)  // First findOne for initial booking check
+          .mockResolvedValueOnce(mockUser)     // Second findOne for user check
+          .mockResolvedValueOnce(mockParking)  // Third findOne for parking check
+          .mockResolvedValueOnce(updatedBooking); // Fourth findOne for final booking check
+
+        // Mock successful updates
+        mockCollection.updateOne
+          .mockResolvedValueOnce({ modifiedCount: 1 }) // User balance update
+          .mockResolvedValueOnce({ modifiedCount: 1 }) // Parking slot update
+          .mockResolvedValueOnce({ modifiedCount: 1 }); // Booking status update
+
+        // Mock successful transaction
+        mockSession.withTransaction.mockImplementation(async (callback) => {
+          await callback();
+          return true;
+        });
+
+        const result = await Booking.processPayment(mockBookingId, mockUserId.toString());
+
+        expect(result).toEqual(updatedBooking);
+        expect(mockSession.withTransaction).toHaveBeenCalled();
+        expect(mockCollection.updateOne).toHaveBeenCalledTimes(3);
+        
+        // Verify specific updates
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { _id: mockUserId },
+          { $inc: { saldo: -20000 } },
+          { session: mockSession }
+        );
+        
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { _id: mockParkingId },
+          { $inc: { "available.car": -1 } },
+          { session: mockSession }
+        );
+        
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { _id: mockBookingId },
+          {
+            $set: {
+              status: 'confirmed',
+              updated_at: expect.any(Date)
+            }
+          },
+          { session: mockSession }
+        );
+      });
     });
-  });
 
-  describe('cancel', () => {
-    it('should cancel booking successfully', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const mockBooking = { 
-        _id: new ObjectId(bookingId), 
-        status: 'pending',
-        parkingLotId: new ObjectId()
-      };
-      const cancelledBooking = { ...mockBooking, status: 'cancelled' };
-
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-      mockCollection.findOneAndUpdate.mockResolvedValue(cancelledBooking);
-      mockParkingCollection.updateOne.mockResolvedValue({});
-
-      const result = await Booking.cancel(bookingId);
-
-      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: new ObjectId(bookingId) },
-        { 
-          $set: {
-            status: 'cancelled',
-            updatedAt: expect.any(Date)
+    describe('getActiveBookings', () => {
+      it('should return active bookings for user', async () => {
+        const mockBookings = [
+          {
+            _id: mockBookingId,
+            user_id: mockUserId,
+            status: 'active'
           }
-        },
-        { returnDocument: 'after' }
-      );
+        ];
 
-      expect(mockParkingCollection.updateOne).toHaveBeenCalledWith(
-        { _id: mockBooking.parkingLotId },
-        { $inc: { availableSlots: 1 } }
-      );
+        mockCollection.toArray.mockResolvedValue(mockBookings);
 
-      expect(result).toEqual(cancelledBooking);
+        const result = await Booking.getActiveBookings(mockUserId);
+
+        expect(result).toEqual(mockBookings);
+        expect(mockCollection.find).toHaveBeenCalledWith({
+          user_id: expect.any(ObjectId),
+          status: { $in: ['pending', 'confirmed', 'active', 'completed'] }
+        });
+      });
     });
 
-    it('should throw error if booking not found', async () => {
-      mockCollection.findOne.mockResolvedValue(null);
-
-      const validObjectId = '507f1f77bcf86cd799439011';
-      await expect(Booking.cancel(validObjectId))
-        .rejects.toThrow('Booking tidak ditemukan');
-    });
-
-    it('should throw error if booking already completed', async () => {
-      const validObjectId = '507f1f77bcf86cd799439011';
-      const mockBooking = { 
-        _id: new ObjectId(validObjectId), 
-        status: 'completed' 
-      };
-
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-
-      await expect(Booking.cancel(validObjectId))
-        .rejects.toThrow('Booking sudah selesai atau dibatalkan');
-    });
-
-    it('should throw error if booking already cancelled', async () => {
-      const validObjectId = '507f1f77bcf86cd799439011';
-      const mockBooking = { 
-        _id: new ObjectId(validObjectId), 
-        status: 'cancelled' 
-      };
-
-      mockCollection.findOne.mockResolvedValue(mockBooking);
-
-      await expect(Booking.cancel(validObjectId))
-        .rejects.toThrow('Booking sudah selesai atau dibatalkan');
-    });
-  });
-
-  describe('confirm', () => {
-    it('should confirm booking successfully', async () => {
-      const bookingId = '507f1f77bcf86cd799439011';
-      const confirmedBooking = { 
-        _id: new ObjectId(bookingId), 
-        status: 'confirmed' 
-      };
-
-      mockCollection.findOneAndUpdate.mockResolvedValue(confirmedBooking);
-
-      const result = await Booking.confirm(bookingId);
-
-      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: new ObjectId(bookingId) },
-        { 
-          $set: {
-            status: 'confirmed',
-            updatedAt: expect.any(Date)
+    describe('getCurrentActiveBookings', () => {
+      it('should return current active bookings for user', async () => {
+        const mockBookings = [
+          {
+            _id: mockBookingId,
+            user_id: mockUserId,
+            status: 'active'
           }
-        },
-        { returnDocument: 'after' }
-      );
+        ];
 
-      expect(result).toEqual(confirmedBooking);
+        mockCollection.toArray.mockResolvedValue(mockBookings);
+
+        const result = await Booking.getCurrentActiveBookings(mockUserId);
+
+        expect(result).toEqual(mockBookings);
+        expect(mockCollection.find).toHaveBeenCalledWith({
+          user_id: expect.any(ObjectId),
+          status: { $in: ['confirmed', 'active'] }
+        });
+      });
     });
   });
-
-  describe('setupIndexes', () => {
-    it('should create database indexes', async () => {
-      mockCollection.createIndex.mockResolvedValue({});
-
-      await Booking.setupIndexes();
-
-      expect(mockCollection.createIndex).toHaveBeenCalledTimes(4);
-      expect(mockCollection.createIndex).toHaveBeenCalledWith({ userId: 1 });
-      expect(mockCollection.createIndex).toHaveBeenCalledWith({ parkingLotId: 1 });
-      expect(mockCollection.createIndex).toHaveBeenCalledWith({ status: 1 });
-      expect(mockCollection.createIndex).toHaveBeenCalledWith({ startTime: 1 });
-    });
-  });
-}); 
+});

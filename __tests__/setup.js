@@ -17,9 +17,7 @@ process.env.MONGOMS_IP = '127.0.0.1';
 if (process.env.UNIT_DB !== 'false') {
   beforeAll(async () => {
     // Start in-memory MongoDB instance
-    mongoServer = await MongoMemoryServer.create({
-      instance: { ip: '127.0.0.1' }
-    });
+    mongoServer = await MongoMemoryServer.create();
     const mongoUri = mongoServer.getUri();
     
     // Set test database URI
