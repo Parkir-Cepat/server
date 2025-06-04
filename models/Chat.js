@@ -10,13 +10,13 @@ export class Chat {
     const db = getDB();
     await Promise.all([
       // Compound index untuk chat history antar users
-      db.collection(this.collection).createIndex({ 
-        user_id: 1, 
+      db.collection(this.collection).createIndex({
+        user_id: 1,
         room_id: 1,
-        created_at: 1 
+        created_at: 1,
       }),
       db.collection(this.collection).createIndex({ room_id: 1 }),
-      db.collection(this.collection).createIndex({ created_at: 1 })
+      db.collection(this.collection).createIndex({ created_at: 1 }),
     ]);
   }
 
@@ -26,18 +26,19 @@ export class Chat {
     // Validasi users exist
     const [sender, receiver] = await Promise.all([
       db.collection("users").findOne({ _id: new ObjectId(senderId) }),
-      db.collection("users").findOne({ _id: new ObjectId(receiverId) })
+      db.collection("users").findOne({ _id: new ObjectId(receiverId) }),
     ]);
 
     if (!sender || !receiver) {
       throw new Error("Pengirim atau penerima tidak ditemukan");
-    }    const chat = {
+    }
+    const chat = {
       senderId: new ObjectId(senderId),
       receiverId: new ObjectId(receiverId),
       message,
       bookingId: bookingId ? new ObjectId(bookingId) : null,
       read: false,
-      created_at: new Date()
+      created_at: new Date(),
     };
 
     const result = await db.collection(this.collection).insertOne(chat);
@@ -45,21 +46,31 @@ export class Chat {
   }
 
   static async markAsRead(messageId) {
-    const db = getDB();    const result = await db.collection(this.collection).findOneAndUpdate(
-      { _id: new ObjectId(messageId) },
-      { $set: { read: true } },
-      { returnDocument: "after" }
-    );
+    const db = getDB();
+    const result = await db
+      .collection(this.collection)
+      .findOneAndUpdate(
+        { _id: new ObjectId(messageId) },
+        { $set: { read: true } },
+        { returnDocument: "after" }
+      );
     return result;
   }
   static async getChatHistory(userId1, userId2, limit = 50) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({
         $or: [
-          { senderId: new ObjectId(userId1), receiverId: new ObjectId(userId2) },
-          { senderId: new ObjectId(userId2), receiverId: new ObjectId(userId1) }
-        ]
+          {
+            senderId: new ObjectId(userId1),
+            receiverId: new ObjectId(userId2),
+          },
+          {
+            senderId: new ObjectId(userId2),
+            receiverId: new ObjectId(userId1),
+          },
+        ],
       })
       .sort({ created_at: -1 })
       .limit(limit)
@@ -68,7 +79,8 @@ export class Chat {
 
   static async getBookingChats(bookingId) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({ bookingId: new ObjectId(bookingId) })
       .sort({ createdAt: 1 })
       .toArray();
@@ -76,64 +88,68 @@ export class Chat {
 
   static async getRecentChats(userId) {
     const db = getDB();
-    return await db.collection(this.collection).aggregate([
-      {
-        $match: {
-          $or: [
-            { senderId: new ObjectId(userId) },
-            { receiverId: new ObjectId(userId) }
-          ]
-        }
-      },
-      {
-        $sort: { createdAt: -1 }
-      },
-      {
-        $group: {
-          _id: {
-            $cond: [
-              { $eq: ["$senderId", new ObjectId(userId)] },
-              "$receiverId",
-              "$senderId"
-            ]
+    return await db
+      .collection(this.collection)
+      .aggregate([
+        {
+          $match: {
+            $or: [
+              { senderId: new ObjectId(userId) },
+              { receiverId: new ObjectId(userId) },
+            ],
           },
-          lastMessage: { $first: "$message" },
-          lastMessageTime: { $first: "$createdAt" }
-        }
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "otherUser"
-        }
-      },
-      {
-        $unwind: "$otherUser"
-      },
-      {
-        $project: {
-          otherUser: {
-            _id: 1,
-            name: 1
+        },
+        {
+          $sort: { createdAt: -1 },
+        },
+        {
+          $group: {
+            _id: {
+              $cond: [
+                { $eq: ["$senderId", new ObjectId(userId)] },
+                "$receiverId",
+                "$senderId",
+              ],
+            },
+            lastMessage: { $first: "$message" },
+            lastMessageTime: { $first: "$createdAt" },
           },
-          lastMessage: 1,
-          lastMessageTime: 1
-        }
-      },
-      {
-        $sort: { lastMessageTime: -1 }
-      }
-    ]).toArray();
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "otherUser",
+          },
+        },
+        {
+          $unwind: "$otherUser",
+        },
+        {
+          $project: {
+            otherUser: {
+              _id: 1,
+              name: 1,
+            },
+            lastMessage: 1,
+            lastMessageTime: 1,
+          },
+        },
+        {
+          $sort: { lastMessageTime: -1 },
+        },
+      ])
+      .toArray();
   }
 
   static async getUnreadMessages(userId) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({
         receiverId: new ObjectId(userId),
-        read: false
+        read: false,
       })
       .toArray();
   }
@@ -142,14 +158,14 @@ export class Chat {
     const db = getDB();
     await Promise.all([
       // Compound index untuk chat history antar users
-      db.collection(this.collection).createIndex({ 
-        senderId: 1, 
-        receiverId: 1, 
-        createdAt: 1 
+      db.collection(this.collection).createIndex({
+        senderId: 1,
+        receiverId: 1,
+        createdAt: 1,
       }),
       db.collection(this.collection).createIndex({ bookingId: 1 }),
       db.collection(this.collection).createIndex({ createdAt: 1 }),
-      db.collection(this.collection).createIndex({ read: 1 })
+      db.collection(this.collection).createIndex({ read: 1 }),
     ]);
   }
 
@@ -165,7 +181,7 @@ export class Chat {
       message_type: chatData.message_type || "text",
       read_by: [],
       created_at: new Date(),
-      updated_at: new Date()
+      updated_at: new Date(),
     };
 
     const result = await db.collection(this.collection).insertOne(chat);
@@ -174,12 +190,19 @@ export class Chat {
 
   static async getHistory(userId1, userId2, limit = 50) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({
         $or: [
-          { senderId: new ObjectId(userId1), receiverId: new ObjectId(userId2) },
-          { senderId: new ObjectId(userId2), receiverId: new ObjectId(userId1) }
-        ]
+          {
+            senderId: new ObjectId(userId1),
+            receiverId: new ObjectId(userId2),
+          },
+          {
+            senderId: new ObjectId(userId2),
+            receiverId: new ObjectId(userId1),
+          },
+        ],
       })
       .sort({ createdAt: -1 })
       .limit(limit)
@@ -188,7 +211,8 @@ export class Chat {
 
   static async getByBooking(bookingId) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({ bookingId: new ObjectId(bookingId) })
       .sort({ createdAt: 1 })
       .toArray();
@@ -196,64 +220,68 @@ export class Chat {
 
   static async getParticipants(userId) {
     const db = getDB();
-    return await db.collection(this.collection).aggregate([
-      {
-        $match: {
-          $or: [
-            { senderId: new ObjectId(userId) },
-            { receiverId: new ObjectId(userId) }
-          ]
-        }
-      },
-      {
-        $sort: { createdAt: -1 }
-      },
-      {
-        $group: {
-          _id: {
-            $cond: [
-              { $eq: ["$senderId", new ObjectId(userId)] },
-              "$receiverId",
-              "$senderId"
-            ]
+    return await db
+      .collection(this.collection)
+      .aggregate([
+        {
+          $match: {
+            $or: [
+              { senderId: new ObjectId(userId) },
+              { receiverId: new ObjectId(userId) },
+            ],
           },
-          lastMessage: { $first: "$message" },
-          lastMessageTime: { $first: "$createdAt" }
-        }
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "_id",
-          foreignField: "_id",
-          as: "otherUser"
-        }
-      },
-      {
-        $unwind: "$otherUser"
-      },
-      {
-        $project: {
-          otherUser: {
-            _id: 1,
-            name: 1
+        },
+        {
+          $sort: { createdAt: -1 },
+        },
+        {
+          $group: {
+            _id: {
+              $cond: [
+                { $eq: ["$senderId", new ObjectId(userId)] },
+                "$receiverId",
+                "$senderId",
+              ],
+            },
+            lastMessage: { $first: "$message" },
+            lastMessageTime: { $first: "$createdAt" },
           },
-          lastMessage: 1,
-          lastMessageTime: 1
-        }
-      },
-      {
-        $sort: { lastMessageTime: -1 }
-      }
-    ]).toArray();
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "_id",
+            foreignField: "_id",
+            as: "otherUser",
+          },
+        },
+        {
+          $unwind: "$otherUser",
+        },
+        {
+          $project: {
+            otherUser: {
+              _id: 1,
+              name: 1,
+            },
+            lastMessage: 1,
+            lastMessageTime: 1,
+          },
+        },
+        {
+          $sort: { lastMessageTime: -1 },
+        },
+      ])
+      .toArray();
   }
 
   static async getUnread(userId) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({
         receiverId: new ObjectId(userId),
-        read: false
+        read: false,
       })
       .toArray();
   }
@@ -264,7 +292,7 @@ export class Chat {
       {
         senderId: new ObjectId(senderId),
         receiverId: new ObjectId(receiverId),
-        read: false
+        read: false,
       },
       { $set: { read: true } }
     );
@@ -277,7 +305,9 @@ export class Chat {
    */
   static async findById(id) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
+    return await db
+      .collection(this.collection)
+      .findOne({ _id: new ObjectId(id) });
   }
   /**
    * Mengirim pesan dalam room
@@ -290,7 +320,7 @@ export class Chat {
     // Validasi user dan room exist
     const [user, room] = await Promise.all([
       db.collection("users").findOne({ _id: new ObjectId(chatData.user_id) }),
-      db.collection("rooms").findOne({ _id: new ObjectId(chatData.room_id) })
+      db.collection("rooms").findOne({ _id: new ObjectId(chatData.room_id) }),
     ]);
 
     if (!user || !room) {
@@ -304,7 +334,7 @@ export class Chat {
       message_type: chatData.message_type || "text",
       read_by: [],
       created_at: new Date(),
-      updated_at: new Date()
+      updated_at: new Date(),
     };
 
     const result = await db.collection(this.collection).insertOne(chat);
@@ -318,7 +348,8 @@ export class Chat {
    */
   static async getRoomChats(roomId, limit = 50) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({ room_id: new ObjectId(roomId) })
       .sort({ created_at: -1 })
       .limit(limit)
@@ -332,7 +363,8 @@ export class Chat {
    */
   static async getUserChats(userId) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({ user_id: new ObjectId(userId) })
       .sort({ createdAt: -1 })
       .toArray();
@@ -347,13 +379,13 @@ export class Chat {
   static async markRoomAsRead(roomId, userId) {
     const db = getDB();
     return await db.collection(this.collection).updateMany(
-      { 
+      {
         room_id: new ObjectId(roomId),
-        read_by: { $ne: new ObjectId(userId) }
+        read_by: { $ne: new ObjectId(userId) },
       },
-      { 
+      {
         $addToSet: { read_by: new ObjectId(userId) },
-        $set: { updated_at: new Date() }
+        $set: { updated_at: new Date() },
       }
     );
   }
