@@ -19,7 +19,13 @@ export const connectDB = async () => {
     await setupIndexes();
   } catch (error) {
     console.error('❌ Error koneksi ke MongoDB:', error);
-    process.exit(1);
+    
+    // Don't exit process in test environment
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    } else {
+      throw error; // Throw error instead of exiting in test environment
+    }
   }
 };
 

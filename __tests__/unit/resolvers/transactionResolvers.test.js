@@ -8,11 +8,11 @@ import { ObjectId } from "mongodb";
 // Mock dependencies
 jest.mock("../../../models/Transaction.js", () => ({
   Transaction: {
-    findById: jest.fn(),
+    findById: jest.fn().mockImplementation(() => Promise.resolve({ id: '123', amount: 100 })),
     findByUser: jest.fn(),
     findByBooking: jest.fn(),
     findByTransactionId: jest.fn(),
-    create: jest.fn(),
+    create: jest.fn().mockImplementation(() => Promise.resolve({ id: '123', amount: 100 })),
     updateStatus: jest.fn()
   }
 }));
@@ -341,4 +341,4 @@ describe("Transaction Resolvers", () => {
       });
     });
   });
-}); 
+});

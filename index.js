@@ -15,7 +15,7 @@ import resolvers from "./schemas/resolvers/index.js";
 import { verifyNotification } from "./helpers/midtrans.js";
 import { Transaction } from "./models/Transaction.js";
 import session from "express-session";
-import passport from "./helpers/googleAuth.js";
+import passport, { generateGoogleAuthToken } from "./helpers/googleAuth.js";
 import webhookRoutes from "./routes/webhook.js";
 
 // Load environment variables
@@ -170,11 +170,22 @@ const startServer = async () => {
 🚀 Server siap di http://localhost:${PORT}/graphql
 🔌 WebSocket siap di ws://localhost:${PORT}${process.env.WS_PATH || "/graphql"}
       `);
-    });
-  } catch (error) {
+    });  } catch (error) {
     console.error("❌ Error starting server:", error);
-    process.exit(1);
+    
+    // Don't exit process in test environment
+    if (process.env.NODE_ENV !== 'test') {
+      process.exit(1);
+    } else {
+      throw error; // Throw error instead of exiting in test environment
+    }
   }
 };
 
-startServer();
+// Only start server if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  startServer();
+}
+
+// Export for testing
+export { app, server, httpServer };

@@ -579,4 +579,47 @@ describe('Transaction Model', () => {
       await expect(Transaction.getUserBalance(new ObjectId().toString())).rejects.toThrow('Aggregation failed');
     });
   });
+
+  describe('Edge & Negative Case Extensions', () => {    it('should throw error if transactionId is not a valid ObjectId in findById', async () => {
+      await expect(Transaction.findById('not-an-objectid')).rejects.toThrow('input must be a 24 character hex string');
+    });
+
+    it('should throw error if bookingId is not a valid ObjectId in findByBookingId', async () => {
+      await expect(Transaction.findByBookingId('not-an-objectid')).rejects.toThrow('input must be a 24 character hex string');
+    });
+
+    it('should throw error if userId is not a valid ObjectId in findByUserId', async () => {
+      await expect(Transaction.findByUserId('not-an-objectid')).rejects.toThrow('input must be a 24 character hex string');
+    });
+
+    it('should throw error if required fields are missing in create', async () => {
+      await expect(Transaction.create({})).rejects.toThrow();
+    });
+
+    it('should throw error if amount is zero or negative in create', async () => {
+      const transactionData = {
+        user_id: new ObjectId().toString(),
+        amount: 0,
+        type: 'payment'
+      };
+      await expect(Transaction.create(transactionData)).rejects.toThrow();
+      transactionData.amount = -1000;
+      await expect(Transaction.create(transactionData)).rejects.toThrow();
+    });
+
+    it('should throw error if updateStatus is called with invalid status', async () => {
+      mockCollection.findOne.mockResolvedValue({
+        _id: new ObjectId(),
+        transaction_id: 'TRX-123',
+        status: 'pending'
+      });
+      mockCollection.updateOne.mockRejectedValue(new Error('Invalid status'));
+      await expect(Transaction.updateStatus('TRX-123', 'not-a-status')).rejects.toThrow('Invalid status');
+    });
+
+    it('should throw error if findByUser is called with invalid filter', async () => {
+      mockCollection.find.mockImplementation(() => { throw new Error('Invalid filter'); });
+      await expect(Transaction.findByUser(new ObjectId().toString(), { type: 123 })).rejects.toThrow('Invalid filter');
+    });
+  });
 });

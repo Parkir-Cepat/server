@@ -1,6 +1,7 @@
 import { Parking } from "../../../models/Parking.js";
 import { getDB } from "../../../config/db.js";
 import { ObjectId } from "mongodb";
+import { MongoMemoryServer } from 'mongodb-memory-server';
 
 jest.mock("../../../config/db.js");
 
@@ -9,6 +10,24 @@ describe("Parking Model", () => {
   let mockCollection;
   const mockUserId = new ObjectId();
   const mockParkingId = new ObjectId();
+  let mongoServer;
+
+  beforeAll(async () => {
+    mongoServer = await MongoMemoryServer.create({
+      instance: {
+        port: 27017, // Use a specific port to avoid permission issues
+      },
+    });
+
+    const mongoUri = mongoServer.getUri();
+    process.env.MONGO_URI = mongoUri;
+  });
+
+  afterAll(async () => {
+    if (mongoServer) {
+      await mongoServer.stop();
+    }
+  });
 
   beforeEach(() => {
     mockCollection = {

@@ -10,10 +10,10 @@ jest.mock("jsonwebtoken");
 
 describe("User Model", () => {
   let mockDb;
-  let mockCollection;
-  beforeEach(() => {
+  let mockCollection;  beforeEach(() => {
     mockCollection = {
       findOne: jest.fn(),
+      find: jest.fn(),
       insertOne: jest.fn(),
       findOneAndUpdate: jest.fn(),
       createIndex: jest.fn(),
@@ -327,6 +327,121 @@ describe("User Model", () => {
         created_at: 1,
       });
       expect(mockCollection.createIndex).toHaveBeenCalledWith({ google_id: 1 });
+    });
+  });
+
+  describe('Edge & Negative Case Extensions', () => {
+    it('should throw error if userId is not a valid ObjectId in findById', async () => {
+      mockCollection.findOne.mockImplementation(() => { throw new Error('Invalid ObjectId'); });
+      await expect(User.findById('not-an-objectid')).rejects.toThrow('Invalid ObjectId');
+    });
+
+    it('should throw error if userId is not a valid ObjectId in update', async () => {
+      mockCollection.findOneAndUpdate.mockImplementation(() => { throw new Error('Invalid ObjectId'); });
+      await expect(User.update('not-an-objectid', { name: 'Test' })).rejects.toThrow('Invalid ObjectId');
+    });    it('should throw error if userId is not a valid ObjectId in updateSaldo', async () => {
+      await expect(User.updateSaldo('not-an-objectid', 1000)).rejects.toThrow('input must be a 24 character hex string');
+    });
+
+    it('should throw error if user not found in updateSaldo', async () => {
+      mockCollection.findOne.mockResolvedValueOnce(null);
+      await expect(User.updateSaldo('507f1f77bcf86cd799439011', 1000)).rejects.toThrow();
+    });
+
+    it('should throw error if required fields are missing in create', async () => {
+      await expect(User.create({})).rejects.toThrow();
+    });
+
+    it('should throw error if update is called with empty updates', async () => {
+      mockCollection.findOneAndUpdate.mockRejectedValue(new Error('No updates provided'));
+      await expect(User.update('507f1f77bcf86cd799439011', {})).rejects.toThrow('No updates provided');
+    });
+
+    it('should handle bcrypt.compare throwing error in comparePassword', async () => {
+      bcrypt.compare.mockRejectedValue(new Error('bcrypt error'));
+      await expect(User.comparePassword('hash', 'pass')).rejects.toThrow('bcrypt error');
+    });    it('should handle missing fields in generateAuthToken', async () => {
+      const userWithMissingId = { email: 'test@example.com' };
+      const token = User.generateAuthToken(userWithMissingId);
+      expect(token).toBeDefined();
+    });
+
+    it('should handle User.find with filter', async () => {
+      const mockUsers = [
+        { _id: '507f1f77bcf86cd799439011', email: 'test1@example.com', role: 'user' },
+        { _id: '507f1f77bcf86cd799439012', email: 'test2@example.com', role: 'user' }
+      ];
+      mockCollection.find.mockReturnValue({
+        toArray: jest.fn().mockResolvedValue(mockUsers)
+      });
+      
+      const result = await User.find({ role: 'user' });
+      expect(result).toEqual(mockUsers);
+      expect(mockCollection.find).toHaveBeenCalledWith({ role: 'user' });
+    });
+
+    it('should handle User.findByIds', async () => {
+      const ids = ['507f1f77bcf86cd799439011', '507f1f77bcf86cd799439012'];
+      const mockUsers = [
+        { _id: '507f1f77bcf86cd799439011', email: 'test1@example.com' },
+        { _id: '507f1f77bcf86cd799439012', email: 'test2@example.com' }
+      ];
+      mockCollection.find.mockReturnValue({
+        toArray: jest.fn().mockResolvedValue(mockUsers)
+      });
+      
+      const result = await User.findByIds(ids);
+      expect(result).toEqual(mockUsers);
+      expect(mockCollection.find).toHaveBeenCalledWith({
+        _id: { $in: expect.any(Array) }
+      });
+    });
+
+    it('should handle database connection errors gracefully', async () => {
+      mockCollection.findOne.mockRejectedValueOnce(new Error('Database connection failed'));
+      
+      await expect(User.findById('507f1f77bcf86cd799439011')).rejects.toThrow('Database connection failed');
+    });    it('should handle create with duplicate email error', async () => {
+      const userData = {
+        name: 'Test User',
+        email: 'duplicate@example.com',
+        password: 'password123'
+      };
+      
+      const duplicateError = new Error('Duplicate key error');
+      duplicateError.code = 11000;
+      mockCollection.insertOne.mockRejectedValueOnce(duplicateError);
+      
+      await expect(User.create(userData)).rejects.toThrow('Duplicate key error');
+    });
+
+    it('should handle edge case with invalid ObjectId in findById', async () => {
+      // Test with non-hex string
+      mockCollection.findOne.mockResolvedValueOnce(null);
+      const result = await User.findById('invalid-id');
+      expect(result).toBeNull();
+      expect(mockCollection.findOne).toHaveBeenCalledWith({ _id: 'invalid-id' });
+    });
+
+    it('should handle empty results in find method', async () => {
+      mockCollection.find.mockReturnValue({
+        toArray: jest.fn().mockResolvedValue([])
+      });
+      
+      const result = await User.find({ role: 'nonexistent' });
+      expect(result).toEqual([]);
+    });
+
+    it('should handle empty array in findByIds', async () => {
+      mockCollection.find.mockReturnValue({
+        toArray: jest.fn().mockResolvedValue([])
+      });
+      
+      const result = await User.findByIds([]);
+      expect(result).toEqual([]);
+      expect(mockCollection.find).toHaveBeenCalledWith({
+        _id: { $in: [] }
+      });
     });
   });
 });
