@@ -5,11 +5,23 @@ import bcrypt from 'bcryptjs';
 import { ObjectId } from 'mongodb';
 import { getDB, getMongoClient } from '../../config/db.js';
 
+// Error message mappings to handle localization or different error messages
+export const ERROR_MESSAGE_MAP = {
+  'Authentication required': 'Anda harus login terlebih dahulu',
+  'Current password is incorrect': 'Password lama tidak sesuai',
+  'New password must be at least 6 characters': 'Password baru minimal harus 6 karakter',
+  'Admin access required': 'Admin access required',
+  'Email already in use': 'Email sudah digunakan',
+  'Invalid email/password': 'Email atau password tidak valid',
+  'User not found': 'User tidak ditemukan',
+  'Google authentication failed': 'Autentikasi Google gagal',
+};
+
 // Mock data generators
 export const mockUser = {
   email: 'test@example.com',
   name: 'Test User',
-  role: 'customer',
+  role: 'user',
   saldo: 100000,
   googleId: null,
   avatar: null,
@@ -30,26 +42,58 @@ export const mockParkingLot = {
   rates: { car: 5000, motorcycle: 2000 },
   operationalHours: { open: '06:00', close: '22:00' },
   facilities: ['CCTV', 'Security'],
-  images: ['image1.jpg'],
-  status: 'active',
+  images: ['image1.jpg'],  status: 'active',
   rating: 0,
-  reviewCount: 0,
-  createdAt: new Date(),
-  updatedAt: new Date()
+  review_count: 0,
+  created_at: new Date(),
+  updated_at: new Date()
+};
+
+/**
+ * Checks if the error message matches any of the expected messages, allowing for 
+ * translation differences
+ * @param {Error} error - The error object
+ * @param {string} expectedMessage - The expected error message in English
+ * @returns {boolean} - True if the message matches
+ */
+export const errorMessageMatches = (error, expectedMessage) => {
+  // Check direct match
+  if (error.message === expectedMessage) {
+    return true;
+  }
+  
+  // Check mapped message
+  const mappedMessage = ERROR_MESSAGE_MAP[expectedMessage];
+  if (mappedMessage && error.message === mappedMessage) {
+    return true;
+  }
+  
+  // Check partial match (useful for GraphQL errors that include extensions)
+  if (mappedMessage && error.message.includes(mappedMessage)) {
+    return true;
+  }
+  
+  if (expectedMessage && error.message.includes(expectedMessage)) {
+    return true;
+  }
+  
+  return false;
 };
 
 export const mockBooking = {
-  startTime: new Date(),
-  endTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours later
-  totalPrice: 10000,
+  start_time: new Date(),
+  end_time: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours later
   status: 'active',
-  qrCode: 'test-qr-code',
-  createdAt: new Date(),
-  updatedAt: new Date()
+  cost: 10000,
+  vehicle_type: 'car',
+  duration: 2,
+  qr_code: 'test-qr-code',
+  created_at: new Date(),
+  updated_at: new Date()
 };
 
 // Authentication helpers
-export const generateTestToken = (userId, role = 'customer') => {
+export const generateTestToken = (userId, role = 'user') => {
   const tokenUserId = userId || new ObjectId().toString();
   return jwt.sign(
     { id: tokenUserId, role },
@@ -105,12 +149,10 @@ export const createTestBooking = async (db = null, bookingData = {}) => {
 };
 
 // Database cleanup
-export const cleanupDatabase = async () => {
-  const database = getDB();
-  // Clear all collections
-  const collections = ['users', 'parking_lots', 'bookings', 'payments', 'saldoTransactions', 'chats', 'notifications'];
+export const cleanupDatabase = async (db) => {
+  const collections = ['users', 'parkings', 'bookings', 'notifications', 'chats', 'payments'];
   for (const collection of collections) {
-    await database.collection(collection).deleteMany({});
+    await db.collection(collection).deleteMany({});
   }
 };
 
@@ -153,4 +195,4 @@ export const expectGraphQLError = (response, errorMessage) => {
 export const expectGraphQLSuccess = (response) => {
   expect(response.body.errors).toBeUndefined();
   expect(response.body.data).toBeDefined();
-}; 
+};
