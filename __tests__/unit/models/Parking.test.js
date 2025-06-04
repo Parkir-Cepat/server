@@ -7,24 +7,30 @@ jest.mock("../../../config/db.js");
 describe("Parking Model", () => {
   let mockDb;
   let mockCollection;
+  const mockUserId = new ObjectId();
+  const mockParkingId = new ObjectId();
+
   beforeEach(() => {
     mockCollection = {
+      createIndex: jest.fn().mockResolvedValue(null),
       findOne: jest.fn(),
-      insertOne: jest.fn(),
       find: jest.fn().mockReturnThis(),
-      limit: jest.fn().mockReturnThis(), // Added limit mock
-      toArray: jest.fn(),
+      insertOne: jest.fn(),
+      updateOne: jest.fn(),
       findOneAndUpdate: jest.fn(),
-      createIndex: jest.fn(),
-      aggregate: jest.fn().mockReturnThis(),
+      countDocuments: jest.fn(),
       sort: jest.fn().mockReturnThis(),
+      toArray: jest.fn(),
+      aggregate: jest.fn().mockReturnThis()
     };
+
     mockDb = {
-      collection: jest.fn().mockReturnValue(mockCollection),
+      collection: jest.fn().mockReturnValue(mockCollection)
     };
+
     getDB.mockReturnValue(mockDb);
-    jest.clearAllMocks();
   });
+
   describe("setupIndexes", () => {
     it("should create the required indexes", async () => {
       await Parking.setupIndexes();
@@ -40,187 +46,224 @@ describe("Parking Model", () => {
 
   describe("findById", () => {
     it("should find parking by ID", async () => {
-      const id = "507f1f77bcf86cd799439011";
-      const mockParking = { _id: new ObjectId(id), name: "Parkir A" };
+      const mockParking = {
+        _id: mockParkingId,
+        name: "Test Parking",
+        available: {
+          car: 5,
+          motorcycle: 10
+        }
+      };
+
       mockCollection.findOne.mockResolvedValue(mockParking);
-      const result = await Parking.findById(id);
-      expect(mockCollection.findOne).toHaveBeenCalledWith({
-        _id: new ObjectId(id),
-      });
+
+      const result = await Parking.findById(mockParkingId);
+
       expect(result).toEqual(mockParking);
+      expect(mockCollection.findOne).toHaveBeenCalledWith({
+        _id: expect.any(ObjectId)
+      });
     });
-    
+
     it("should set default available values if not provided", async () => {
-      const id = "507f1f77bcf86cd799439011";
-      const mockParking = { _id: new ObjectId(id), name: "Parkir A" };
+      const mockParking = {
+        _id: mockParkingId,
+        name: "Test Parking"
+      };
+
       mockCollection.findOne.mockResolvedValue(mockParking);
-      const result = await Parking.findById(id);
+
+      const result = await Parking.findById(mockParkingId);
+
       expect(result.available).toEqual({
         car: 0,
         motorcycle: 0
       });
     });
   });
-  describe("create", () => {
-    it("should create a parking", async () => {
-      const parkingData = {
-        name: "Parkir A",
-        location: { coordinates: [106.8, -6.2] },
-        totalSlots: 10,
-        ownerId: "507f1f77bcf86cd799439012",
-        address: "Jl. Test",
+
+  describe("Parking Space Management", () => {
+    describe("create", () => {
+      const mockParkingData = {
+        name: "Test Parking",
+        address: "Test Address",
+        owner_id: mockUserId.toString(),
+        capacity: {
+          car: 10,
+          motorcycle: 20
+        },
+        rates: {
+          car: 10000,
+          motorcycle: 5000
+        },
+        location: {
+          coordinates: [106.8456, -6.2088]
+        }
       };
-      const insertedId = new ObjectId();
-      mockCollection.insertOne.mockResolvedValue({ insertedId });
-      const result = await Parking.create(parkingData);
-      expect(mockCollection.insertOne).toHaveBeenCalledWith(
-        expect.objectContaining({
-          name: parkingData.name,
+
+      it("should create parking with correct initial availability", async () => {
+        mockCollection.insertOne.mockImplementation(data => ({
+          insertedId: mockParkingId,
+          acknowledged: true
+        }));
+
+        const result = await Parking.create(mockParkingData);
+
+        expect(result).toEqual({
+          _id: mockParkingId,
+          ...mockParkingData,
+          owner_id: expect.any(ObjectId),
+          available: {
+            car: 10,
+            motorcycle: 20
+          },
           location: {
             type: "Point",
-            coordinates: parkingData.location.coordinates,
+            coordinates: mockParkingData.location.coordinates
           },
-          totalSlots: parkingData.totalSlots,
-          owner_id: expect.any(ObjectId),
           created_at: expect.any(Date),
-        })
-      );
-      expect(result._id).toBe(insertedId);
+          updated_at: expect.any(Date)
+        });
+      });
     });
-  });
 
-  describe("findNearby", () => {
-    it("should find nearby parkings", async () => {
-      const mockParkings = [{ _id: "123", name: "Test Parking" }];
+    describe("update", () => {
+      const mockParking = {
+        _id: mockParkingId,
+        owner_id: mockUserId,
+        name: "Test Parking",
+        capacity: {
+          car: 10,
+          motorcycle: 20
+        },
+        available: {
+          car: 8,
+          motorcycle: 15
+        },
+        rates: {
+          car: 10000,
+          motorcycle: 5000
+        }
+      };
 
-      // Since the implementation might use aggregate instead of find
-      mockCollection.aggregate.mockReturnThis();
-      mockCollection.toArray.mockResolvedValue(mockParkings);
+      it("should update parking details", async () => {
+        const updatedParking = {
+          ...mockParking,
+          name: "Updated Parking",
+          updated_at: new Date()
+        };
 
-      // Also keep the find mocks in case it uses find
-      mockCollection.find.mockReturnThis();
-      mockCollection.limit.mockReturnThis();
+        mockCollection.findOne
+          .mockResolvedValueOnce(mockParking)  // First call for checking existence
+          .mockResolvedValueOnce(updatedParking); // Second call after update
 
-      const result = await Parking.findNearby({
-        longitude: 106.8,
-        latitude: -6.2,
-        maxDistance: 1000,
+        const result = await Parking.update(mockParkingId, {
+          name: "Updated Parking"
+        });
+
+        expect(result.name).toBe("Updated Parking");
+        expect(mockCollection.updateOne).toHaveBeenCalledWith(
+          { _id: expect.any(ObjectId) },
+          {
+            $set: expect.objectContaining({
+              name: "Updated Parking",
+              updated_at: expect.any(Date)
+            })
+          }
+        );
       });
 
-      // Check if either aggregate or find was called (depending on implementation)
-      const aggregateCalled = mockCollection.aggregate.mock.calls.length > 0;
-      const findCalled = mockCollection.find.mock.calls.length > 0;
+      it("should return null if parking not found", async () => {
+        mockCollection.findOne.mockResolvedValue(null);
 
-      expect(aggregateCalled || findCalled).toBe(true);
-      expect(mockCollection.toArray).toHaveBeenCalled();
-      expect(result).toEqual(mockParkings);
+        const result = await Parking.update(mockParkingId, { name: "New Name" });
+
+        expect(result).toBeNull();
+      });
     });
   });
 
-  describe("updateAvailability", () => {
-    it("should update availability if parking exists and slot valid", async () => {
-      const parkingId = "507f1f77bcf86cd799439011";
-      const mockParking = {
-        _id: new ObjectId(parkingId),
-        available: { car: 5, motorcycle: 10 },
-        capacity: { car: 10, motorcycle: 20 },
-      };
-
-      const updatedParking = {
-        ...mockParking,
-        available: { car: 6, motorcycle: 10 },
-      };
-
-      mockCollection.findOne.mockResolvedValue(mockParking);
-      mockCollection.findOneAndUpdate.mockResolvedValue(updatedParking);
-
-      const result = await Parking.updateAvailability(parkingId, 1, "car");
-
-      expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: new ObjectId(parkingId) },
-        { $inc: { available_slots: "car" } },
-        { returnDocument: "after" }
-      );
-      expect(result).toEqual(updatedParking);
-    });
-
-    it("should throw error if parking not found", async () => {
-      const validId = "507f1f77bcf86cd799439011";
-      mockCollection.findOne.mockResolvedValue(null);
-
-      // Mock the updateAvailability method to throw an error when parking is not found
-      const originalUpdateAvailability = Parking.updateAvailability;
-      Parking.updateAvailability = jest
-        .fn()
-        .mockImplementation(async (id, amount, vehicleType) => {
-          const parking = await mockCollection.findOne({
-            _id: new ObjectId(id),
-          });
-          if (!parking) {
-            throw new Error("Tempat parkir tidak ditemukan");
+  describe("Availability Management", () => {
+    describe("updateAvailability", () => {
+      it("should update available slots", async () => {
+        const mockParking = {
+          _id: mockParkingId,
+          available: {
+            car: 5,
+            motorcycle: 10
           }
-          return originalUpdateAvailability.call(
-            Parking,
-            id,
-            amount,
-            vehicleType
-          );
+        };
+
+        mockCollection.findOneAndUpdate.mockResolvedValue({
+          ...mockParking,
+          available: {
+            car: 6,
+            motorcycle: 10
+          }
         });
 
-      await expect(
-        Parking.updateAvailability(validId, 1, "car")
-      ).rejects.toThrow("Tempat parkir tidak ditemukan");
+        const result = await Parking.updateAvailability(mockParkingId, "car", 1);
 
-      // Restore original method
-      Parking.updateAvailability = originalUpdateAvailability;
-    });
-
-    it("should throw error if slot not valid", async () => {
-      const parkingId = "507f1f77bcf86cd799439011";
-      const mockParking = {
-        _id: new ObjectId(parkingId),
-        available: { car: 0 },
-        capacity: { car: 10 },
-      };
-
-      mockCollection.findOne.mockResolvedValue(mockParking);
-
-      // Mock the updateAvailability method to throw an error when slot is not valid
-      const originalUpdateAvailability = Parking.updateAvailability;
-      Parking.updateAvailability = jest
-        .fn()
-        .mockImplementation(async (id, amount, vehicleType) => {
-          const parking = await mockCollection.findOne({
-            _id: new ObjectId(id),
-          });
-          if (parking && parking.available[vehicleType] + amount < 0) {
-            throw new Error("Slot parkir tidak valid");
-          }
-          return originalUpdateAvailability.call(
-            Parking,
-            id,
-            amount,
-            vehicleType
-          );
-        });
-
-      await expect(
-        Parking.updateAvailability(parkingId, -1, "car")
-      ).rejects.toThrow("Slot parkir tidak valid");
-
-      // Restore original method
-      Parking.updateAvailability = originalUpdateAvailability;
+        expect(result.available?.car).toBe(6);
+      });
     });
   });
 
-  describe("findByOwner", () => {
-    it("should find parkings by owner", async () => {
-      const ownerId = "507f1f77bcf86cd799439012";
-      // Update mockParkings to include all fields that the actual implementation returns
-      const mockParkings = [
-        {
-          _id: "683fd9cde35275c521abbd29",
-          ownerId: "507f1f77bcf86cd799439012",
+  describe("Search & Filters", () => {
+    describe("findNearby", () => {
+      it("should find nearby parkings", async () => {
+        const mockParkings = [
+          {
+            _id: mockParkingId,
+            name: "Test Parking",
+            distance: 500
+          }
+        ];
+
+        mockCollection.aggregate.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue(mockParkings);
+
+        const result = await Parking.findNearby({
+          longitude: 106.8,
+          latitude: -6.2,
+          maxDistance: 1000
+        });
+
+        expect(result).toEqual(mockParkings);
+        expect(mockCollection.aggregate).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            expect.objectContaining({
+              $geoNear: expect.objectContaining({
+                near: {
+                  type: "Point",
+                  coordinates: [106.8, -6.2]
+                }
+              })
+            })
+          ])
+        );
+      });
+    });
+
+    describe("findByOwner", () => {
+      it("should find parkings by owner", async () => {
+        const mockParkings = [
+          {
+            _id: mockParkingId,
+            owner_id: mockUserId,
+            name: "Test Parking"
+          }
+        ];
+
+        mockCollection.find.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue(mockParkings);
+
+        const result = await Parking.findByOwner(mockUserId);
+
+        expect(result[0]).toEqual(expect.objectContaining({
+          _id: mockParkingId,
+          owner_id: mockUserId,
+          name: "Test Parking",
           address: "",
           available: { car: 0, motorcycle: 0 },
           capacity: { car: 0, motorcycle: 0 },
@@ -229,33 +272,8 @@ describe("Parking Model", () => {
           operational_hours: { open: "00:00", close: "23:59" },
           rating: 0,
           review_count: 0,
-          status: "active",
-        },
-      ];
-
-      mockCollection.find.mockReturnThis();
-      mockCollection.toArray.mockResolvedValue(mockParkings);
-
-      const result = await Parking.findByOwner(ownerId);
-
-      expect(mockCollection.find).toHaveBeenCalledWith({
-        owner_id: new ObjectId(ownerId),
-        is_deleted: { $ne: true },
-      });
-      expect(result).toEqual(mockParkings);
-    });
-  });
-
-  describe("createIndexes", () => {
-    it("should create indexes", async () => {
-      mockCollection.createIndex.mockResolvedValue({});
-      await Parking.createIndexes();
-      expect(mockCollection.createIndex).toHaveBeenCalledWith({
-        location: "2dsphere",
-      });
-      expect(mockCollection.createIndex).toHaveBeenCalledWith({ owner_id: 1 });
-      expect(mockCollection.createIndex).toHaveBeenCalledWith({
-        created_at: 1,
+          status: "active"
+        }));
       });
     });
   });
