@@ -799,6 +799,44 @@ export const transactionResolvers = {
         throw new Error("Failed to process webhook");
       }
     },
+
+    createTransaction: async (_, { input }, { user }) => {
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+
+      const transaction = await Transaction.create({
+        user_id: user._id,
+        ...input,
+      });
+
+      return transaction;
+    },
+
+    updateTransactionStatus: async (_, { id, status }, { user }) => {
+      if (!user)
+        throw new GraphQLError("Anda harus login terlebih dahulu", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+
+      const transaction = await Transaction.findById(id);
+      if (!transaction) throw new Error("Transaksi tidak ditemukan");
+
+      if (
+        transaction.user_id.toString() !== user._id.toString() &&
+        user.role !== "admin"
+      ) {
+        throw new GraphQLError("Anda tidak memiliki akses", {
+          extensions: { code: "FORBIDDEN" },
+        });
+      }
+
+      await Transaction.updateStatus(id, status);
+      const updatedTransaction = await Transaction.findById(id);
+
+      return updatedTransaction;
+    },
   },
 
   Subscription: {

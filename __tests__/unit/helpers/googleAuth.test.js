@@ -85,5 +85,40 @@ describe('googleAuth helper', () => {
       });
       expect(result).toEqual(mockPayload);
     });
+
+    it('should throw an error if payload is missing required fields', async () => {
+      const incompletePayload = { email: "test@example.com" }; // Missing 'sub' field
+      mockVerifyIdToken.mockResolvedValueOnce({ getPayload: () => incompletePayload });
+
+      await expect(verifyGoogleToken("token-with-missing-fields")).rejects.toThrow(
+        "Invalid payload structure"
+      );
+    });
+
+    it("should handle unexpected errors gracefully", async () => {
+      mockVerifyIdToken.mockImplementationOnce(() => {
+        throw new Error("Unexpected error");
+      });
+
+      await expect(verifyGoogleToken("token-causing-error")).rejects.toThrow(
+        "Unexpected error"
+      );
+    });
+
+    it("should throw an error if payload.sub is null", async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({ getPayload: () => ({ sub: null, email: "test@example.com" }) });
+
+      await expect(verifyGoogleToken("token-with-null-sub")).rejects.toThrow(
+        "Invalid payload structure"
+      );
+    });
+
+    it('should throw an error if payload.sub is null or missing', async () => {
+      mockVerifyIdToken.mockResolvedValueOnce({ getPayload: () => ({ email: 'test@example.com' }) });
+      await expect(verifyGoogleToken('token-without-sub')).rejects.toThrow('Invalid payload structure: sub is missing or null');
+
+      mockVerifyIdToken.mockResolvedValueOnce({ getPayload: () => ({ sub: null, email: 'test@example.com' }) });
+      await expect(verifyGoogleToken('token-with-null-sub')).rejects.toThrow('Invalid payload structure: sub is missing or null');
+    });
   });
 });

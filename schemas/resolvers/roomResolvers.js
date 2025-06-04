@@ -77,6 +77,15 @@ export const roomResolvers = {
         parking_id
       );
     },
+    rooms: async () => {
+      try {
+        const rooms = await Room.find({}).toArray();
+        return rooms;
+      } catch (error) {
+        console.error("Error fetching rooms:", error);
+        throw new GraphQLError("Failed to fetch rooms");
+      }
+    },
   },
 
   Mutation: {

@@ -341,4 +341,76 @@ describe("Transaction Resolvers", () => {
       });
     });
   });
+
+  describe("Mutation", () => {
+    describe("createTransaction", () => {
+      it("should throw an error if user is not authenticated", async () => {
+        const mockContext = { user: null };
+
+        await expect(
+          transactionResolvers.Mutation.createTransaction(null, { input: {} }, mockContext)
+        ).rejects.toThrow("Anda harus login terlebih dahulu");
+      });
+
+      it("should create a transaction successfully", async () => {
+        const mockInput = {
+          amount: 100000,
+          type: "payment",
+          booking_id: mockBookingId,
+        };
+
+        const mockTransaction = {
+          _id: mockTransactionId,
+          user_id: mockUserId,
+          ...mockInput,
+        };
+
+        Transaction.create.mockResolvedValue(mockTransaction);
+
+        const result = await transactionResolvers.Mutation.createTransaction(
+          null,
+          { input: mockInput },
+          mockContext
+        );
+
+        expect(result).toEqual(mockTransaction);
+        expect(Transaction.create).toHaveBeenCalledWith({
+          user_id: mockUserId,
+          ...mockInput,
+        });
+      });
+    });
+
+    describe("updateTransactionStatus", () => {
+      it("should throw an error if user is not authenticated", async () => {
+        const mockContext = { user: null };
+
+        await expect(
+          transactionResolvers.Mutation.updateTransactionStatus(null, { id: mockTransactionId, status: "completed" }, mockContext)
+        ).rejects.toThrow("Anda harus login terlebih dahulu");
+      });
+
+      it("should update the transaction status successfully", async () => {
+        const mockTransaction = {
+          _id: mockTransactionId,
+          user_id: mockUserId,
+          amount: 100000,
+          type: "payment",
+          status: "pending",
+        };
+
+        Transaction.findById.mockResolvedValue(mockTransaction);
+        Transaction.updateStatus.mockResolvedValue({ ...mockTransaction, status: "completed" });
+
+        const result = await transactionResolvers.Mutation.updateTransactionStatus(
+          null,
+          { id: mockTransactionId, status: "completed" },
+          mockContext
+        );
+
+        expect(result.status).toBe("completed");
+        expect(Transaction.updateStatus).toHaveBeenCalledWith(mockTransactionId, "completed");
+      });
+    });
+  });
 });

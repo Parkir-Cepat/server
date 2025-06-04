@@ -19,3 +19,5 @@ const typeDefs = mergeTypeDefs([
 ]);
 
 export default typeDefs;
+
+parkingsByOwner(ownerId: ID): [Parking]

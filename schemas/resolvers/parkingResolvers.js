@@ -154,6 +154,28 @@ export const parkingResolvers = {
         .limit(limit || 20)
         .toArray();
     },
+
+    parkingsByOwner: async (_, { ownerId }, { user }) => {
+      if (!user) {
+        throw new GraphQLError("User not authenticated", {
+          extensions: { code: "UNAUTHENTICATED" },
+        });
+      }
+
+      if (!ownerId) {
+        throw new GraphQLError("Owner ID is required", {
+          extensions: { code: "BAD_USER_INPUT" },
+        });
+      }
+
+      try {
+        const parkings = await Parking.find({ owner_id: ownerId }).toArray();
+        return parkings;
+      } catch (error) {
+        console.error("Error fetching parkings by owner:", error);
+        throw new GraphQLError("Failed to fetch parkings by owner");
+      }
+    },
   },
 
   Mutation: {

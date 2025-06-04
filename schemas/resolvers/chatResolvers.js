@@ -80,6 +80,28 @@ export const chatResolvers = {
 
       return await Chat.getRecentChats(user._id);
     },
+
+    async chatsByRoom(parent, { roomId }, { user }) {
+      if (!user) {
+        throw new AuthenticationError("You must be logged in to view chats");
+      }
+
+      if (!roomId) {
+        throw new UserInputError("Room ID is required");
+      }
+
+      if (!ObjectId.isValid(roomId)) {
+        throw new UserInputError("Invalid Room ID format");
+      }
+
+      try {
+        const chats = await Chat.find({ room_id: roomId }).toArray();
+        return chats;
+      } catch (error) {
+        console.error("Error fetching chats by room:", error);
+        throw new GraphQLError("Failed to fetch chats by room");
+      }
+    },
   },
 
   Mutation: {

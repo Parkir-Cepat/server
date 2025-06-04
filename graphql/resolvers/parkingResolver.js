@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import { getDB } from "../config/db.js";
+import { getDB } from "../../config/db.js";
 
 export class Parking {
   static collection = "parkings";
@@ -84,7 +84,8 @@ export class Parking {
     };
 
     const result = await db.collection(this.collection).insertOne(parking);
-    return { _id: result.insertedId, ...parking };
+    if (!result.insertedId) throw new Error("Failed to create parking");
+    return { id: result.insertedId.toString(), ...parking };
   }
   /**
    * Mencari parking terdekat berdasarkan lokasi
@@ -579,6 +580,46 @@ export class Parking {
       console.error("Error getting parking stats:", error);
       throw new Error("Failed to get parking statistics");
     }
+  }
+
+  /**
+   * Membuat parking baru
+   * @param {Object} parkingData - Data parking
+   * @returns {Promise<Object>} Parking document yang baru dibuat
+   */
+  static async createParking(parkingData) {
+    const db = getDB();
+    const parking = {
+      name: parkingData.name,
+      location: parkingData.location,
+      owner_id: parkingData.owner_id,
+      created_at: new Date(),
+    };
+
+    const result = await db.collection(this.collection).insertOne(parking);
+    if (!result.insertedId) throw new Error("Failed to create parking");
+    return { id: result.insertedId.toString(), ...parking };
+  }
+
+  /**
+   * Mengupdate parking berdasarkan ID
+   * @param {string} id - ID parking
+   * @param {Object} updateData - Data yang akan diupdate
+   * @returns {Promise<Object>} Parking document yang telah diupdate
+   */
+  static async updateParking(id, updateData) {
+    const db = getDB();
+    const result = await db.collection(this.collection).findOneAndUpdate(
+      { _id: new ObjectId(id) },
+      { $set: updateData },
+      { returnDocument: "after" }
+    );
+
+    if (!result.value) throw new Error("Parking not found");
+
+    const updatedParking = { id: result.value._id.toString(), ...result.value };
+    delete updatedParking._id;
+    return updatedParking;
   }
 }
 

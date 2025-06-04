@@ -1,152 +1,76 @@
-const request = require('supertest');
-const app = require('../../../index');
-const { MongoMemoryServer } = require('mongodb-memory-server');
+import express from 'express';
+import request from 'supertest';
+import router from '../../../routes/webhook.js';
+import { Transaction } from '../../../models/Transaction.js';
+import { User } from '../../../models/User.js';
 
-jest.mock('../../../helpers/midtrans', () => ({
-  verifySignature: jest.fn(),
-}));
+jest.mock('../../../models/Transaction.js');
+jest.mock('../../../models/User.js');
 
-jest.mock('../../../index', () => {
-  const express = require('express');
-  const app = express();
-  app.use(express.json());
-
-  const router = require('../../../routes/webhook');
-  app.use('/webhook', router);
-
-  app.address = jest.fn(() => 'http://localhost:3000');
-  return app;
-});
-
-jest.mock('../../../routes/webhook', () => {
-  const express = require('express');
-  const router = express.Router();
-
-  router.post('/midtrans', (req, res) => {
-    const { order_id, transaction_status, fraud_status } = req.body;
-
-    if (!order_id || !transaction_status) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    if (transaction_status === 'settlement' && fraud_status === 'accept') {
-      return res.status(200).json({ message: 'Transaction successful' });
-    }
-
-    return res.status(400).json({ error: 'Invalid transaction' });
-  });
-
-  return router;
-});
-
-const { verifySignature } = require('../../../helpers/midtrans');
-
-describe('Webhook Routes', () => {
-  let mongoServer;
-
-  beforeAll(async () => {
-    mongoServer = await MongoMemoryServer.create({
-      instance: {
-        port: 27017, // Use a specific port to avoid conflicts
-      },
-    });
-    const mongoUri = mongoServer.getUri();
-
-    // Set test database URI
-    process.env.MONGO_URI = mongoUri;
+describe('POST /midtrans Webhook', () => {
+  let app;
+  beforeAll(() => {
+    app = express();
+    app.use(express.json());
+    app.use('/', router);
   });
 
   beforeEach(() => {
     jest.clearAllMocks();
+    process.env.MIDTRANS_SERVER_KEY = 'key';
   });
 
-  it('should handle valid webhook requests', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ order_id: '12345', transaction_status: 'settlement', fraud_status: 'accept' });
+  const makeRequest = (body) => request(app).post('/midtrans').send(body);
 
-    expect(response.status).toBe(200);
-    expect(response.body.message).toBe('Transaction successful');
+  it('returns 404 when transaction not found', async () => {
+    Transaction.findByTransactionId.mockResolvedValue(null);
+    const res = await makeRequest({ order_id: 'o1', transaction_status: 'capture', fraud_status: 'accept', gross_amount: '10', signature_key: '' });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'Transaction not found' });
   });
 
-  it('should reject invalid webhook requests', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ order_id: '12345', transaction_status: 'settlement', fraud_status: 'accept' });
-
-    expect(response.status).toBe(200); // Actually returns 200 for this payload in the mock
-    expect(response.body.message).toBe('Transaction successful');
+  it('processes success top-up and updates user', async () => {
+    const tx = { _id: 't1', status: 'pending', type: 'top-up', user_id: 'u1', amount: 100, transaction_id: 'o2' };
+    Transaction.findByTransactionId.mockResolvedValue(tx);
+    Transaction.updateStatus.mockResolvedValue({ ...tx, status: 'success' });
+    User.updateSaldo.mockResolvedValue(true);
+    Transaction.create.mockResolvedValue({});
+    const res = await makeRequest({ order_id: 'o2', transaction_status: 'settlement', fraud_status: 'accept', gross_amount: '100', signature_key: '' });
+    expect(res.status).toBe(200);
+    expect(Transaction.updateStatus).toHaveBeenCalledWith('t1', 'success');
+    expect(User.updateSaldo).toHaveBeenCalledWith('u1', 100);
+    expect(Transaction.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'saldo_credit' }));
+    expect(res.body).toEqual({ status: 'OK' });
   });
 
-  it('should handle missing fields in webhook requests', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({});
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Missing required fields');
+  it('sets pending status and skips user update', async () => {
+    const tx = { _id: 't2', status: 'other', type: 'purchase', user_id: 'u2', amount: 50, transaction_id: 'o3' };
+    Transaction.findByTransactionId.mockResolvedValue(tx);
+    Transaction.updateStatus.mockResolvedValue({ ...tx, status: 'pending' });
+    const res = await makeRequest({ order_id: 'o3', transaction_status: 'pending', gross_amount: '50', signature_key: '' });
+    expect(res.status).toBe(200);
+    expect(Transaction.updateStatus).toHaveBeenCalledWith('t2', 'pending');
+    expect(User.updateSaldo).not.toHaveBeenCalled();
+    expect(Transaction.create).not.toHaveBeenCalled();
+    expect(res.body).toEqual({ status: 'OK' });
   });
 
-  it('should return 400 if required fields are missing', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({});
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Missing required fields');
+  it('handles failed statuses and skips user update', async () => {
+    const tx = { _id: 't3', status: 'pending', type: 'top-up', user_id: 'u3', amount: 30, transaction_id: 'o4' };
+    Transaction.findByTransactionId.mockResolvedValue(tx);
+    Transaction.updateStatus.mockResolvedValue({ ...tx, status: 'failed' });
+    const res = await makeRequest({ order_id: 'o4', transaction_status: 'deny', gross_amount: '30', signature_key: '' });
+    expect(res.status).toBe(200);
+    expect(Transaction.updateStatus).toHaveBeenCalledWith('t3', 'failed');
+    expect(User.updateSaldo).not.toHaveBeenCalled();
+    expect(Transaction.create).not.toHaveBeenCalled();
+    expect(res.body).toEqual({ status: 'OK' });
   });
 
-  it('should return 200 for valid webhook requests', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ order_id: '12345', transaction_status: 'settlement', fraud_status: 'accept' });
-
-    expect(response.status).toBe(200);
-    expect(response.body.message).toBe('Transaction successful');
-  });
-
-  it('should return 400 for invalid transaction status', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ order_id: '12345', transaction_status: 'failed', fraud_status: 'reject' });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Invalid transaction');
-  });
-
-  it('should return 400 if fraud_status is missing', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ order_id: '12345', transaction_status: 'settlement' });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Invalid transaction'); // Adjusted to match mock router
-  });
-
-  it('should return 400 if order_id is missing', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ transaction_status: 'settlement', fraud_status: 'accept' });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Missing required fields');
-  });
-
-  it('should return 400 if transaction_status is missing', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ order_id: '12345', fraud_status: 'accept' });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Missing required fields');
-  });
-
-  it('should return 400 for unknown transaction_status', async () => {
-    const response = await request(app)
-      .post('/webhook/midtrans')
-      .send({ order_id: '12345', transaction_status: 'unknown', fraud_status: 'accept' });
-
-    expect(response.status).toBe(400);
-    expect(response.body.error).toBe('Invalid transaction');
+  it('returns 500 on unexpected error', async () => {
+    Transaction.findByTransactionId.mockRejectedValue(new Error('err'));
+    const res = await makeRequest({ order_id: 'o5', transaction_status: 'capture', gross_amount: '20', signature_key: '' });
+    expect(res.status).toBe(500);
+    expect(res.body).toEqual({ error: 'Webhook processing failed' });
   });
 });

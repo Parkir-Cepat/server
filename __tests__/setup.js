@@ -17,7 +17,11 @@ process.env.MONGOMS_IP = '127.0.0.1';
 if (process.env.UNIT_DB !== 'false') {
   beforeAll(async () => {
     // Start in-memory MongoDB instance
-    mongoServer = await MongoMemoryServer.create();
+    mongoServer = await MongoMemoryServer.create({
+      instance: {
+        port: 27017, // Use a fixed port to avoid conflicts
+      },
+    });
     const mongoUri = mongoServer.getUri();
     
     // Set test database URI
@@ -49,4 +53,4 @@ global.console = {
   info: jest.fn(),
   warn: jest.fn(),
   error: jest.fn(),
-}; 
+};

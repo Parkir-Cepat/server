@@ -51,15 +51,14 @@ describe("Parking Model", () => {
   });
 
   describe("setupIndexes", () => {
-    it("should create the required indexes", async () => {
+    it("should create all indexes including text index", async () => {
       await Parking.setupIndexes();
-
       expect(mockDb.collection).toHaveBeenCalledWith(Parking.collection);
-      expect(mockCollection.createIndex).toHaveBeenCalledTimes(4);
       expect(mockCollection.createIndex).toHaveBeenCalledWith({ location: "2dsphere" });
       expect(mockCollection.createIndex).toHaveBeenCalledWith({ owner_id: 1 });
       expect(mockCollection.createIndex).toHaveBeenCalledWith({ created_at: 1 });
       expect(mockCollection.createIndex).toHaveBeenCalledWith({ name: "text", description: "text" });
+      expect(mockCollection.createIndex).toHaveBeenCalledTimes(4);
     });
   });
 
@@ -98,6 +97,24 @@ describe("Parking Model", () => {
         car: 0,
         motorcycle: 0
       });
+    });
+
+    // New: when available provided, should preserve values
+    it("should preserve provided available values", async () => {
+      const provided = { car: 3, motorcycle: 4 };
+      const mockParking = { _id: mockParkingId, name: "Test", available: provided };
+      mockCollection.findOne.mockResolvedValue(mockParking);
+
+      const result = await Parking.findById(mockParkingId);
+      expect(result.available).toEqual(provided);
+    });
+  });
+
+  describe("findById - not found case", () => {
+    it("should return null if parking does not exist", async () => {
+      mockCollection.findOne.mockResolvedValue(null);
+      const result = await Parking.findById(mockParkingId);
+      expect(result).toBeNull();
     });
   });
 
@@ -143,6 +160,38 @@ describe("Parking Model", () => {
           created_at: expect.any(Date),
           updated_at: expect.any(Date)
         });
+      });
+
+      // New: preserve explicit available
+      it("should not override provided available value", async () => {
+        const dataWithAvail = { ...mockParkingData, available: { car: 7, motorcycle: 8 } };
+        mockCollection.insertOne.mockImplementation(data => ({ insertedId: mockParkingId, acknowledged: true }));
+        const result = await Parking.create(dataWithAvail);
+        expect(result.available).toEqual({ car: 7, motorcycle: 8 });
+      });
+    });
+
+    describe("create advanced", () => {
+      it("should convert location to GeoJSON Point and set timestamps", async () => {
+        const data = {
+          name: "LocTest",
+          owner_id: mockUserId.toString(),
+          capacity: { car: 2, motorcycle: 3 },
+          location: { coordinates: [1, 2] }
+        };
+        mockCollection.insertOne.mockResolvedValue({ insertedId: mockParkingId, acknowledged: true });
+        const result = await Parking.create(data);
+        expect(result.location).toEqual({ type: "Point", coordinates: [1, 2] });
+        expect(result.created_at).toBeInstanceOf(Date);
+        expect(result.updated_at).toBeInstanceOf(Date);
+        expect(result.owner_id).toEqual(expect.any(ObjectId));
+      });
+
+      it("should not set available when capacity not provided", async () => {
+        const dataNoCap = { name: "NoCap", owner_id: mockUserId.toString() };
+        mockCollection.insertOne.mockResolvedValue({ insertedId: mockParkingId, acknowledged: true });
+        const result = await Parking.create(dataNoCap);
+        expect(result.available).toBeUndefined();
       });
     });
 
@@ -225,6 +274,26 @@ describe("Parking Model", () => {
 
         expect(result.available?.car).toBe(6);
       });
+
+      // New: test for motorcycle branch
+      it("should update available slots for motorcycle", async () => {
+        const mockParking = { _id: mockParkingId, available: { car: 5, motorcycle: 10 } };
+        mockCollection.findOneAndUpdate.mockResolvedValue({ ...mockParking, available: { car: 5, motorcycle: 11 } });
+        const result = await Parking.updateAvailability(mockParkingId, "motorcycle", 1);
+        expect(mockCollection.findOneAndUpdate).toHaveBeenCalledWith(
+          { _id: expect.any(ObjectId) },
+          { $inc: { available_slots: 1 } },
+          { returnDocument: "after" }
+        );
+        expect(result.available.motorcycle).toBe(11);
+      });
+
+      it("should update available slots with negative change", async () => {
+        const mockParking = { _id: mockParkingId, available: { car: 5, motorcycle: 10 } };
+        mockCollection.findOneAndUpdate.mockResolvedValue({ ...mockParking, available: { car: 4, motorcycle: 10 } });
+        const result = await Parking.updateAvailability(mockParkingId, "car", -1);
+        expect(result.available.car).toBe(4);
+      });
     });
   });
 
@@ -262,6 +331,54 @@ describe("Parking Model", () => {
           ])
         );
       });
+
+      // New: filter by car
+      it("should filter results by vehicleType 'car'", async () => {
+        mockCollection.aggregate.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue([{ _id: mockParkingId, name: "P1", distance: 100 }]);
+        await Parking.findNearby({ longitude: 0, latitude: 0, vehicleType: 'car', limit: 5 });
+        const pipeline = mockCollection.aggregate.mock.calls[0][0];
+        expect(pipeline).toEqual(expect.arrayContaining([
+          expect.objectContaining({ $match: { 'available.car': { $gt: 0 } } })
+        ]));
+      });
+
+      // New: filter by motorcycle
+      it("should filter results by vehicleType 'motorcycle'", async () => {
+        mockCollection.aggregate.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue([{ _id: mockParkingId, name: "P2", distance: 200 }]);
+        await Parking.findNearby({ longitude: 0, latitude: 0, vehicleType: 'motorcycle', limit: 3 });
+        const pipeline = mockCollection.aggregate.mock.calls[0][0];
+        expect(pipeline).toEqual(expect.arrayContaining([
+          expect.objectContaining({ $match: { 'available.motorcycle': { $gt: 0 } } })
+        ]));
+      });
+
+      // New: respects limit parameter
+      it("should apply the limit parameter correctly", async () => {
+        mockCollection.aggregate.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue([]);
+        await Parking.findNearby({ longitude: 0, latitude: 0, limit: 2 });
+        const pipeline = mockCollection.aggregate.mock.calls[0][0];
+        expect(pipeline).toEqual(expect.arrayContaining([
+          expect.objectContaining({ $limit: 2 })
+        ]));
+      });
+
+      it("should use default maxDistance and limit, without vehicle filters", async () => {
+        mockCollection.aggregate.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue([]);
+        await Parking.findNearby({ longitude: 10, latitude: 20 });
+        const pipeline = mockCollection.aggregate.mock.calls[0][0];
+        // Should include $geoNear and initial $match plus $limit
+        expect(pipeline[0]).toHaveProperty('$geoNear');
+        expect(pipeline[1]).toHaveProperty('$match');
+        expect(pipeline[pipeline.length-1]).toEqual({ $limit: 100 });
+        // No vehicleType match stages
+        expect(pipeline).not.toEqual(expect.arrayContaining([
+          expect.objectContaining({ $match: { 'available.car': { $gt: 0 } } })
+        ]));
+      });
     });
 
     describe("findByOwner", () => {
@@ -293,6 +410,38 @@ describe("Parking Model", () => {
           review_count: 0,
           status: "active"
         }));
+      });
+
+      it("should map fallback fields correctly", async () => {
+        const incomplete = { _id: mockParkingId, owner_id: mockUserId };
+        mockCollection.find.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue([incomplete]);
+        const result = await Parking.findByOwner(mockUserId);
+        expect(result).toHaveLength(1);
+        const p = result[0];
+        expect(p.address).toBe("");
+        expect(p.capacity).toEqual({ car: 0, motorcycle: 0 });
+        expect(p.available).toEqual({ car: 0, motorcycle: 0 });
+        expect(p.facilities).toEqual([]);
+        expect(p.images).toEqual([]);
+        expect(p.operational_hours).toEqual({ open: "00:00", close: "23:59" });
+        expect(p.rating).toBe(0);
+        expect(p.review_count).toBe(0);
+        expect(p.status).toBe("active");
+      });
+
+      it("should call correct query and sort by created_at descending", async () => {
+        mockCollection.find.mockReturnThis();
+        mockCollection.toArray.mockResolvedValue([]);
+        const ownerStr = mockUserId.toString();
+        const result = await Parking.findByOwner(ownerStr);
+        expect(mockDb.collection).toHaveBeenCalledWith(Parking.collection);
+        expect(mockCollection.find).toHaveBeenCalledWith({
+          owner_id: expect.any(ObjectId),
+          is_deleted: { $ne: true }
+        });
+        expect(mockCollection.sort).toHaveBeenCalledWith({ created_at: -1 });
+        expect(result).toEqual([]);
       });
     });
   });

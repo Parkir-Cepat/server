@@ -98,6 +98,10 @@ export async function verifyGoogleToken(token) {
       throw new Error('Failed to get payload from Google token');
     }
 
+    if (!payload.sub) {
+      throw new Error('Invalid payload structure: sub is missing or null');
+    }
+
     return payload;
   } catch (error) {
     console.error('Error verifying Google token:', error);
@@ -105,4 +109,4 @@ export async function verifyGoogleToken(token) {
   }
 }
 
-export default passport; 
+export default passport;

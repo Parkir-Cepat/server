@@ -145,6 +145,7 @@ type ParkingStats {
       vehicleType: String
       sortBy: String
     ): [Parking!]!
+    parkingsByOwner(ownerId: ID!): [Parking!]!
   }
   type Mutation {
     createParking(input: CreateParkingInput!): Parking!
