@@ -12,7 +12,9 @@ export class UserRoom {
     await Promise.all([
       db.collection(this.collection).createIndex({ user_id: 1 }),
       db.collection(this.collection).createIndex({ room_id: 1 }),
-      db.collection(this.collection).createIndex({ user_id: 1, room_id: 1 }, { unique: true })
+      db
+        .collection(this.collection)
+        .createIndex({ user_id: 1, room_id: 1 }, { unique: true }),
     ]);
   }
 
@@ -23,7 +25,9 @@ export class UserRoom {
    */
   static async findById(id) {
     const db = getDB();
-    return await db.collection(this.collection).findOne({ _id: new ObjectId(id) });
+    return await db
+      .collection(this.collection)
+      .findOne({ _id: new ObjectId(id) });
   }
 
   /**
@@ -36,7 +40,7 @@ export class UserRoom {
     const userRoom = {
       user_id: new ObjectId(userRoomData.user_id),
       room_id: new ObjectId(userRoomData.room_id),
-      created_at: new Date()
+      created_at: new Date(),
     };
 
     const result = await db.collection(this.collection).insertOne(userRoom);
@@ -50,7 +54,8 @@ export class UserRoom {
    */
   static async findByUserId(userId) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({ user_id: new ObjectId(userId) })
       .toArray();
   }
@@ -62,56 +67,63 @@ export class UserRoom {
    */
   static async findByRoomId(roomId) {
     const db = getDB();
-    return await db.collection(this.collection)
+    return await db
+      .collection(this.collection)
       .find({ room_id: new ObjectId(roomId) })
       .toArray();
   }
 
   static async findUserRooms(userId) {
     const db = getDB();
-    return await db.collection(this.collection).aggregate([
-      {
-        $match: { user_id: new ObjectId(userId) }
-      },
-      {
-        $lookup: {
-          from: "rooms",
-          localField: "room_id",
-          foreignField: "_id",
-          as: "room"
-        }
-      },
-      {
-        $unwind: "$room"
-      }
-    ]).toArray();
+    return await db
+      .collection(this.collection)
+      .aggregate([
+        {
+          $match: { user_id: new ObjectId(userId) },
+        },
+        {
+          $lookup: {
+            from: "rooms",
+            localField: "room_id",
+            foreignField: "_id",
+            as: "room",
+          },
+        },
+        {
+          $unwind: "$room",
+        },
+      ])
+      .toArray();
   }
 
   static async findRoomUsers(roomId) {
     const db = getDB();
-    return await db.collection(this.collection).aggregate([
-      {
-        $match: { room_id: new ObjectId(roomId) }
-      },
-      {
-        $lookup: {
-          from: "users",
-          localField: "user_id",
-          foreignField: "_id",
-          as: "user"
-        }
-      },
-      {
-        $unwind: "$user"
-      }
-    ]).toArray();
+    return await db
+      .collection(this.collection)
+      .aggregate([
+        {
+          $match: { room_id: new ObjectId(roomId) },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "user_id",
+            foreignField: "_id",
+            as: "user",
+          },
+        },
+        {
+          $unwind: "$user",
+        },
+      ])
+      .toArray();
   }
 
   static async delete(userId, roomId) {
     const db = getDB();
     const result = await db.collection(this.collection).deleteOne({
       user_id: new ObjectId(userId),
-      room_id: new ObjectId(roomId)
+      room_id: new ObjectId(roomId),
     });
     return result.deletedCount > 0;
   }
@@ -120,7 +132,7 @@ export class UserRoom {
     const db = getDB();
     const count = await db.collection(this.collection).countDocuments({
       user_id: new ObjectId(userId),
-      room_id: new ObjectId(roomId)
+      room_id: new ObjectId(roomId),
     });
     return count > 0;
   }
@@ -133,7 +145,7 @@ export class UserRoom {
   static async countByRoom(roomId) {
     const db = getDB();
     return await db.collection(this.collection).countDocuments({
-      room_id: new ObjectId(roomId)
+      room_id: new ObjectId(roomId),
     });
   }
 
@@ -147,7 +159,7 @@ export class UserRoom {
     const db = getDB();
     return await db.collection(this.collection).findOne({
       user_id: new ObjectId(userId),
-      room_id: new ObjectId(roomId)
+      room_id: new ObjectId(roomId),
     });
   }
 
@@ -157,8 +169,10 @@ export class UserRoom {
     await Promise.all([
       db.collection(this.collection).createIndex({ user_id: 1 }),
       db.collection(this.collection).createIndex({ room_id: 1 }),
-      db.collection(this.collection).createIndex({ user_id: 1, room_id: 1 }, { unique: true }),
-      db.collection(this.collection).createIndex({ created_at: 1 })
+      db
+        .collection(this.collection)
+        .createIndex({ user_id: 1, room_id: 1 }, { unique: true }),
+      db.collection(this.collection).createIndex({ created_at: 1 }),
     ]);
   }
 }
